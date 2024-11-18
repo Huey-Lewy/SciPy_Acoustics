@@ -1,1 +1,4 @@
-# Handles plot toggles and visualizations
+"""
+Purpose: Handles plot toggles and visualizations
+
+"""

@@ -1,1 +1,4 @@
-# Code for the "Generate Report" button
+"""
+Purpose: "Generate Report" button functionality
+
+"""

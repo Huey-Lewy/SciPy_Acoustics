@@ -1,1 +1,4 @@
-# Logging setup for the project?
+"""
+Purpose: Logging setup for the project
+
+"""

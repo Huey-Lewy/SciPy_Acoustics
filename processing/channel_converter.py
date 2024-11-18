@@ -1,1 +1,4 @@
-# Multi-channel to single-channel
+"""
+Purpose: Multi-channel to single-channel
+
+"""

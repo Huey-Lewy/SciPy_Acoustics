@@ -1,1 +1,4 @@
-# Code for the "Load File" button
+"""
+Purpose: "Load File" button functionality
+
+"""

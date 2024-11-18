@@ -1,1 +1,4 @@
-# Calculate RT60 values
+"""
+Purpose: Calculate RT60 values
+
+"""

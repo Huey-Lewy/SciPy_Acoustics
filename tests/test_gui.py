@@ -1,1 +1,4 @@
-# Tests for GUI modules
+"""
+Purpose: Testing for GUI modules' functionality
+
+"""

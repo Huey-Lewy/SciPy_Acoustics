@@ -1,1 +1,4 @@
-# Tests for processing modules
+"""
+Purpose: Testing for Processing modules' functionality
+
+"""
