@@ -13,7 +13,7 @@ class AudioGUI:
         self.fn_label = None   # Placeholder for file name label
         self.af_button = None  # Placeholder for Analyze File button
         self.info = None       # Placeholder for Info label
-        self.master = master   # Renamed from root to avoid name shadowing
+        self.master = master   # Use master instead of root to avoid name shadowing
         self.setup_gui()
     def browse_files(self):
         # Opens a file dialog to select an audio file
@@ -87,6 +87,6 @@ class AudioGUI:
         self.info.place(relx=0.5, rely=0.5, relwidth=0.75, relheight=0.5, anchor="n")
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = AudioGUI(root)
-    root.mainloop()
+    master = tk.Tk()
+    app = AudioGUI(master)
+    master.mainloop()
