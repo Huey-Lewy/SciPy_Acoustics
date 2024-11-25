@@ -1,6 +1,8 @@
-# GUI components and plotting functions
-#   Author: Joseph E.
-#   Helper: Zackariah A.
+"""
+GUI components and plotting functions
+    - Author: Joseph E.
+    - Helper: Zackariah A.
+"""
 
 import os                       # Used to handle file paths
 import tkinter as tk            # Used for the GUI interface

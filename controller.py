@@ -1,1 +1,4 @@
-# All controller logic (e.g., file and plot handling)
+"""
+All controller logic (e.g., file and plot handling)
+
+"""
