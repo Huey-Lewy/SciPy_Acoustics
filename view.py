@@ -34,6 +34,7 @@ class AudioGUI:
         try:
             # Load the audio file using pydub
             audio = AudioSegment.from_file(self.audiofile)
+            audio.set_channels(1) #Sets a multichannel audiofile to monochannel
             file_length = int(len(audio) / 1000)  # Length in seconds
 
             # Update the information label
