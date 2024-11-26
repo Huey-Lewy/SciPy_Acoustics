@@ -1,28 +1,31 @@
 """
 GUI components and plotting functions
-    - Author: Joseph E.
-    - Helper: Zackariah A.
+Authors:
+    - Joseph E.
+    - Zackariah A.
 """
 
-import os                       # Used to handle file paths
-import tkinter as tk            # Used for the GUI interface
-from tkinter import filedialog  # File dialog for browsing files
-from pydub import AudioSegment  # To handle audio processing
+import os
+import tkinter as tk
+from tkinter import filedialog
+from controller import process_audio_file  # Use the controller to handle processing
+
 
 class AudioGUI:
-    def __init__(self, master):
-        self.audiofile = None  # Placeholder for the selected audio file
-        self.fn_label = None   # Placeholder for file name label
-        self.af_button = None  # Placeholder for Analyze File button
-        self.info = None       # Placeholder for Info label
-        self.master = master   # Use master instead of root to avoid name shadowing
-        self.setup_gui()
+    def __init__(self, root):
+        self.audiofile = None   # Placeholder for the selected audio file
+        self.fn_label = None    # Placeholder for file name label
+        self.af_button = None   # Placeholder for Analyze File button
+        self.info = None        # Placeholder for Info label
+        self.master = root      # Use master instead of root to avoid name shadowing
+        self.setup_gui()        # Initialize and configure the GUI layout and components
+
     def browse_files(self):
         # Opens a file dialog to select an audio file
         self.audiofile = filedialog.askopenfilename(
             initialdir="/",
             title="Select a File",
-            filetypes=(("WAVE files", "*.wav"), ("All files", "*.*"))
+            filetypes=(("Audio files", "*.wav *.mp3"), ("All files", "*.*"))
         )
         if self.audiofile:
             self.fn_label.config(text=f"File Opened: {os.path.basename(self.audiofile)}")
@@ -34,18 +37,31 @@ class AudioGUI:
             return
 
         try:
-            # Load the audio file using pydub
-            audio = AudioSegment.from_file(self.audiofile)
-            file_length = int(len(audio) / 1000)  # Length in seconds
+            # Define the directory for processed files
+            output_dir = "data/processed"
 
-            # Update the information label
+            # Ensure the directory exists or create it
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+
+            # Use the process_audio_file function from controller.py
+            processed_file, file_length = process_audio_file(self.audiofile, output_dir)
+
+            if processed_file is None:
+                self.info.config(text="Error processing the file.", font=5)
+                return
+
+            # Update the information label with results
             self.info.config(
-                text=f"File Length: {file_length}s\nResonant Frequency: __Hz\nDifference: _._s",
+                text=f"File Length: {file_length:.2f}s\nResonant Frequency: __Hz\nDifference: _._s",
                 font=5
             )
             self.af_button.place_forget()
+
+        except ValueError as e:
+            self.info.config(text=f"ValueError: {str(e)}", font=5)
         except Exception as e:
-            self.info.config(text=f"Error analyzing file: {str(e)}", font=5)
+            self.info.config(text=f"Unexpected error: {str(e)}", font=5)
 
     def setup_gui(self):
         # Forms the canvas for everything to be held in
@@ -85,7 +101,7 @@ class AudioGUI:
         combine_button.place(relx=0.6, rely=0.33, relwidth=0.3, relheight=0.15, anchor="n")
 
         # Info Label
-        self.info = tk.Label(ui, text="File Length: 0s\nResonant Frequency: __Hz\nDifference: _._s", font=5)
+        self.info = tk.Label(ui, text="Select a file to begin processing.", font=5)
         self.info.place(relx=0.5, rely=0.5, relwidth=0.75, relheight=0.5, anchor="n")
 
 if __name__ == "__main__":
