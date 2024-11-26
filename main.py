@@ -1,12 +1,24 @@
 """
 Main Application Entry Point
-
 This module initializes and runs the main application for the SciPy Acoustics project.
+Authors:
+    - Zackariah A.
+    - Joseph E.
+    - Aidan H.
+    - Steven R.
 """
 
-# Library Imports
-import os
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.signal import find_peaks
-from pydub import AudioSegment
+import tkinter as tk
+from view import AudioGUI  # Import the GUI class
+
+def main():
+    """
+    Initializes and starts the GUI application.
+    """
+    master = tk.Tk()  # Create the main Tkinter window
+    master.title("SciPy Acoustics Project")  # Set the window title
+    app = AudioGUI(master)  # Instantiate the GUI class
+    master.mainloop()  # Run the main GUI loop
+
+if __name__ == "__main__":
+    main()
