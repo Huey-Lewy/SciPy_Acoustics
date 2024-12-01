@@ -81,17 +81,30 @@ target_frequency = 250
 def set_target_frequency(cycle):
     global target_frequency
     if cycle == 1:
-        target_frequency = 250
+        return 250
     elif cycle == 2:
-        target_frequency = 1000
+        return 1000
     elif cycle == 3:
-        target_frequency = 1750
+        return 1750
+    else:
+        return 9
 
 def find_target_frequency(freqs):
     for x in freqs:
-        if x > target_frequency:
+        if x > set_target_frequency(input_cycle):
             break
     return x
+
+def cycle_frequency_number():
+    return set_target_frequency(input_cycle)
+
+
+def find_resonance_frequency(freqs,i):
+    for x in freqs:
+        if x > i:
+            break
+    return x
+
 
 input_cycle = 0
 def cycle_frequency_input():
@@ -101,9 +114,10 @@ def cycle_frequency_input():
     else:
         input_cycle = 1
 
+
 def frequency_check(freqs,spectrum):
-    
-    set_target_frequency(input_cycle)
+
+    target_frequency = find_target_frequency(freqs)
     index_of_frequency = np.where(freqs == target_frequency)[0][0]
     data_for_frequency = spectrum[index_of_frequency]
     db_data_fun = 10 * np.log10(data_for_frequency)
@@ -114,4 +128,57 @@ def find_nearest_value(array, value):
     idx = (np.abs(array - value)).argmin()
     return array[idx]
 
+def find_resonance(filepath):
+    max_resonance_rt60 = 0
+    max_resonance_value = 0
+    for i in range(50,5000,50):
+        try:
+            if not os.path.exists(filepath):
+                raise ValueError(f"File '{filepath}' not found.")
 
+            sample_rate, data = wavfile.read(filepath)
+
+            spectrum, freqs, t, im = plt.specgram(data, Fs=sample_rate, NFFT=1024, cmap=plt.get_cmap('jet'))
+
+            var = find_resonance_frequency(freqs,i)
+            index_of_frequency = np.where(freqs == var)[0][0]
+            data_for_frequency = spectrum[index_of_frequency]
+            db_data = 10 * np.log10(data_for_frequency)
+
+            # Find max value and max value index
+            max_index = np.argmax(db_data)
+            max_value = db_data[max_index]
+
+            # Slice max value array -5
+            sliced_array = db_data[max_index:]
+
+            max_minus_5_value = max_value - 5
+            max_minus_5_value = find_nearest_value(sliced_array, max_minus_5_value)
+            max_minus_5_index = np.where(db_data == max_minus_5_value)[0]
+
+            if len(max_minus_5_index) == 0:
+                raise ValueError("No values found for -5dB threshold.")
+
+            # Slice max value array -25
+            max_minus_25_value = max_value - 25
+            max_minus_25_value = find_nearest_value(sliced_array, max_minus_25_value)
+            max_minus_25_index = np.where(db_data == max_minus_25_value)[0]
+
+            if len(max_minus_25_index) == 0:
+                raise ValueError("No values found for -5dB threshold.")
+
+            # Find RT20
+            rt20 = (t[max_minus_5_index[0]] - t[max_minus_25_index[0]])  # Access first element of the index array
+            rt60 = rt20 * 3
+
+            if rt60 > max_resonance_rt60:
+                max_resonance_rt60 = rt60
+                max_resonance_value = i
+        except ValueError as e:
+            print(f"Error during processing: {e}")
+            return None
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+            return None
+
+    return max_resonance_value

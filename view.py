@@ -12,8 +12,9 @@ from warnings import WarningMessage
 
 import matplotlib.pyplot as plt
 
-from controller import process_audio_file, plot_rt60  # Use the controller to handle processing
-from model import cycle_frequency_input
+from controller import process_audio_file, plot_rt60, call_rt60_difference, \
+    call_average_rt60  # Use the controller to handle processing
+from model import cycle_frequency_input, find_resonance
 
 
 class AudioGUI:
@@ -58,7 +59,7 @@ class AudioGUI:
 
             # Update the information label with results
             self.info.config(
-                text=f"File Length: {file_length:.2f}s\nResonant Frequency: __Hz\nDifference: _._s",
+                text=f"File Length: {file_length:.2f}s\nResonant Frequency: {find_resonance(self.audiofile)}Hz\nDifference: {call_rt60_difference(self.audiofile)}s\nAverage RT60: {call_average_rt60(self.audiofile)}",
                 font=5
             )
             self.af_button.place_forget()
@@ -73,6 +74,7 @@ class AudioGUI:
         try:
             cycle_frequency_input()
             plot_rt60(self.audiofile)
+
         except ValueError as e:
             self.info.config(text=f"ValueError: {str(e)}", font=5)
         except Exception as e:
