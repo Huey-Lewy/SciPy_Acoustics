@@ -129,7 +129,7 @@ def plot_rt60(filepath):
         spectrum, freqs, t, im = plt.specgram(data, Fs=sample_rate, NFFT=1024)
         db_data = frequency_check(freqs, spectrum)
 
-        plt.figure(2)
+        plt.figure()
 
         plt.plot(t, db_data, linewidth=2, alpha=0.5, color='r')
 
@@ -142,7 +142,7 @@ def plot_rt60(filepath):
         plt.plot(t[max_index], db_data[max_index],'go')
 
         # Slice max value array -5
-        sliced_array = db_data[:max_index]
+        sliced_array = db_data[max_index:]
         max_minus_5_value = max_value - 5
 
         max_minus_5_value = find_nearest_value(sliced_array, max_minus_5_value)
@@ -154,6 +154,7 @@ def plot_rt60(filepath):
         max_minus_25_value = find_nearest_value(sliced_array, max_minus_25_value)
         max_minus_25_index = np.where(db_data == max_minus_25_value)
 
+        plt.plot(t[max_minus_25_index], db_data[max_minus_25_index],'ro')
 
         # Find RT20
         rt20 = (t[max_minus_5_index] - t[max_minus_25_index])[0]

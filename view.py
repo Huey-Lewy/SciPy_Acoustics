@@ -107,7 +107,7 @@ class AudioGUI:
         # Buttons for Graphs
         intensity_button = tk.Button(ui, text="Intensity Graph", font=5)
         waveform_button = tk.Button(ui, text="Waveform Graph", font=5)
-        cycle_rt60_button = tk.Button(ui, text="Cycle RT60 Graphs", font=5)
+        cycle_rt60_button = tk.Button(ui, text="Cycle RT60 Graphs",command=self.cycle_rt60_graph, font=5)
         combine_button = tk.Button(ui, text="Combine RT60 Graphs", font=5)
 
         intensity_button.place(relx=0.2, rely=0.01, relwidth=0.3, relheight=0.15, anchor="n")
