@@ -5,7 +5,7 @@ Authors:
 """
 
 import os
-from matplotlib import pyplot as plt
+import matplotlib.pyplot as plt
 from pydub import AudioSegment
 import numpy as np
 from scipy.io import wavfile
@@ -76,59 +76,42 @@ def get_audio_length(filepath):
     return length_in_seconds
 
 
-
-
-'''
-CALCULATING RT60 SECTION
-
-WIP-NOT FUNCTIONAL AS OF NOW
-
-"""Calculate RT60."""
-sample_rate, data = wavfile.read(stripped_filepath)
-spectrum, freqs, t, im = plt.specgram(data, Fs=sample_rate, NFFT=1024)
-
+'''Calculate RT60.'''
+target_frequency = 250
+def set_target_frequency(cycle):
+    global target_frequency
+    if cycle == 1:
+        target_frequency = 250
+    elif cycle == 2:
+        target_frequency = 1000
+    elif cycle == 3:
+        target_frequency = 1750
 
 def find_target_frequency(freqs):
     for x in freqs:
-        if x > 1000:
+        if x > target_frequency:
             break
     return x
 
-def frequency_check():
-    global target_frequency
-    target_frequency = find_target_frequency(freqs)
+input_cycle = 0
+def cycle_frequency_input():
+    global input_cycle
+    if 3 > input_cycle > 0:
+        input_cycle+= 1
+    else:
+        input_cycle = 1
+
+def frequency_check(freqs,spectrum):
+    
+    set_target_frequency(input_cycle)
     index_of_frequency = np.where(freqs == target_frequency)[0][0]
     data_for_frequency = spectrum[index_of_frequency]
     db_data_fun = 10 * np.log10(data_for_frequency)
     return db_data_fun
-db_data = frequency_check()
-
-# Find max value and max value index
-max_index = np.argmax(db_data)
-max_value = db_data[max_index]
-
-# Slice max value array -5
-sliced_array = db_data[:max_index]
-max_minus_5_value = max_value - 5
 
 def find_nearest_value(array, value):
     array = np.asarray(array)
     idx = (np.abs(array - value)).argmin()
     return array[idx]
 
-max_minus_5_value = find_nearest_value(sliced_array, max_minus_5_value)
-max_minus_5_index = np.where(db_data == max_minus_5_value)
 
-# Slice max value array -25
-max_minus_25_value = max_value - 25
-max_minus_25_value = find_nearest_value(sliced_array, max_minus_25_value)
-max_minus_25_index = np.where(db_data == max_minus_25_value)
-
-# Find RT20
-rt20 = max_minus_5_index[0]-max_minus_25_index[0]
-rt60 = rt20 * 3
-
-print(f'The RT60 at frequency {int(target_frequency)}Hz is {round(abs(rt60), 2)} seconds')
-
-
-'''

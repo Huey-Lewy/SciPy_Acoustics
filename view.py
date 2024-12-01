@@ -8,7 +8,12 @@ Authors:
 import os
 import tkinter as tk
 from tkinter import filedialog
-from controller import process_audio_file  # Use the controller to handle processing
+from warnings import WarningMessage
+
+import matplotlib.pyplot as plt
+
+from controller import process_audio_file, plot_rt60  # Use the controller to handle processing
+from model import cycle_frequency_input
 
 
 class AudioGUI:
@@ -58,6 +63,16 @@ class AudioGUI:
             )
             self.af_button.place_forget()
 
+        except ValueError as e:
+            self.info.config(text=f"ValueError: {str(e)}", font=5)
+        except Exception as e:
+            self.info.config(text=f"Unexpected error: {str(e)}", font=5)
+
+
+    def cycle_rt60_graph(self):
+        try:
+            cycle_frequency_input()
+            plot_rt60(self.audiofile)
         except ValueError as e:
             self.info.config(text=f"ValueError: {str(e)}", font=5)
         except Exception as e:

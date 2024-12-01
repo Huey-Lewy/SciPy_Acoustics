@@ -5,13 +5,19 @@ Authors:
 """
 
 import os
+
+import numpy as np
+
 from model import (
     check_file_format,
     convert_mp3_to_wav,
     ensure_single_channel,
     strip_metadata,
-    get_audio_length
+    get_audio_length,
+    frequency_check, target_frequency, find_nearest_value
 )
+from scipy.io import wavfile
+from matplotlib import pyplot as plt
 
 
 def process_audio_file(filepath, output_dir):
@@ -72,3 +78,101 @@ def process_audio_file(filepath, output_dir):
         # Handle unexpected exceptions (e.g., file I/O issues)
         print(f"An unexpected error occurred: {e}")
         return None
+
+
+
+
+def calculate_rt60(filepath):
+
+    try:
+        sample_rate, data = wavfile.read(filepath)
+        spectrum, freqs, t, im = plt.specgram(data, Fs=sample_rate, NFFT=1024)
+        db_data = frequency_check(freqs, spectrum)
+
+        # Find max value and max value index
+        max_index = np.argmax(db_data)
+        max_value = db_data[max_index]
+
+        # Slice max value array -5
+        sliced_array = db_data[:max_index]
+        max_minus_5_value = max_value - 5
+
+        max_minus_5_value = find_nearest_value(sliced_array, max_minus_5_value)
+        max_minus_5_index = np.where(db_data == max_minus_5_value)
+
+        # Slice max value array -25
+        max_minus_25_value = max_value - 25
+        max_minus_25_value = find_nearest_value(sliced_array, max_minus_25_value)
+        max_minus_25_index = np.where(db_data == max_minus_25_value)
+
+        # Find RT20
+        rt20 = (t[max_minus_5_index] - t[max_minus_25_index])[0]
+        rt60 = rt20 * 3
+    except ValueError as e:
+        # Handle file and directory-related errors
+        print(f"Error during processing: {e}")
+        return None
+    except Exception as e:
+        # Handle unexpected exceptions (e.g., file I/O issues)
+        print(f"An unexpected error occurred: {e}")
+        return None
+
+
+def plot_rt60(filepath):
+    try:
+        # Step 0: Check if file and output directory exist
+        if not os.path.exists(filepath):
+            raise ValueError(f"File '{filepath}' not found.")
+
+        # Step 1: Read wav file
+        sample_rate, data = wavfile.read(filepath)
+        spectrum, freqs, t, im = plt.specgram(data, Fs=sample_rate, NFFT=1024)
+        db_data = frequency_check(freqs, spectrum)
+
+        plt.figure(2)
+
+        plt.plot(t, db_data, linewidth=2, alpha=0.5, color='r')
+
+        plt.xlabel('Time (s)')
+        plt.ylabel('Power (dB)')
+
+        # Find max value and max value index
+        max_index = np.argmax(db_data)
+        max_value = db_data[max_index]
+        plt.plot(t[max_index], db_data[max_index],'go')
+
+        # Slice max value array -5
+        sliced_array = db_data[:max_index]
+        max_minus_5_value = max_value - 5
+
+        max_minus_5_value = find_nearest_value(sliced_array, max_minus_5_value)
+        max_minus_5_index = np.where(db_data == max_minus_5_value)
+        plt.plot(t[max_minus_5_index], db_data[max_minus_5_index],'yo')
+
+        # Slice max value array -25
+        max_minus_25_value = max_value - 25
+        max_minus_25_value = find_nearest_value(sliced_array, max_minus_25_value)
+        max_minus_25_index = np.where(db_data == max_minus_25_value)
+
+
+        # Find RT20
+        rt20 = (t[max_minus_5_index] - t[max_minus_25_index])[0]
+        rt60 = rt20 * 3
+
+        plt.grid()
+        plt.show()
+
+        print(f'The RT60 at frequency {int(target_frequency)}Hz is {round(abs(rt60), 2)} seconds')
+
+    except ValueError as e:
+        # Handle file and directory-related errors
+        print(f"Error during processing: {e}")
+        return None
+    except Exception as e:
+        # Handle unexpected exceptions (e.g., file I/O issues)
+        print(f"An unexpected error occurred: {e}")
+        return None
+    
+    
+    
+    
