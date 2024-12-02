@@ -2,31 +2,18 @@
 All controller logic (e.g., file and plot handling)
 Authors:
     - Zackariah A.
+    - Aidan H.
 """
 
 import os
-import statistics
-
-import numpy as np
-from scipy.cluster.hierarchy import average
-
 from model import (
-    check_file_format,
-    convert_mp3_to_wav,
-    ensure_single_channel,
-    strip_metadata,
-    get_audio_length,
-    frequency_check, target_frequency, find_nearest_value, set_target_frequency, input_cycle, cycle_frequency_input,
-    cycle_frequency_number, find_target_frequency
+    check_file_format, convert_mp3_to_wav, ensure_single_channel, strip_metadata, get_audio_length,
+    calculate_rt60_frequency_ranges, get_frequency_with_greatest_amplitude,
+    plot_waveform, plot_rt60_values, plot_intensity_spectrum
 )
-from scipy.io import wavfile
-from matplotlib import pyplot as plt
-import tkinter as tk
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-
-
-def process_audio_file(filepath, output_dir):
+"""Data Cleaning & Processing"""
+def process_audio_file(filepath, output_subdir):
     """
     Process an audio file by:
         1. Checking file format.
@@ -43,13 +30,8 @@ def process_audio_file(filepath, output_dir):
         if not os.path.exists(filepath):
             raise ValueError(f"File '{filepath}' not found.")
 
-        # Ensure the output directory exists or attempt to create it
-        if not os.path.exists(output_dir):
-            try:
-                os.makedirs(output_dir)  # Create output directory if missing
-                print(f"Output directory '{output_dir}' created.")
-            except Exception as e:
-                raise ValueError(f"Failed to create output directory '{output_dir}': {e}")
+        # Ensure the output subdirectory exists
+        os.makedirs(output_subdir, exist_ok=True)
 
         # Step 1: Check file format and get extension
         file_extension = check_file_format(filepath)
@@ -57,7 +39,7 @@ def process_audio_file(filepath, output_dir):
 
         # Step 2: Convert MP3 to WAV if needed
         if file_extension == '.mp3':
-            filepath = convert_mp3_to_wav(filepath, output_dir)
+            filepath = convert_mp3_to_wav(filepath, output_subdir)
             print("Step 2: MP3 converted to WAV.")
 
         # Step 3: Ensure single-channel audio
@@ -65,151 +47,116 @@ def process_audio_file(filepath, output_dir):
         print("Step 3: Multi-channel audio converted to single-channel.")
 
         # Step 4: Strip metadata
+        processed_filepath = os.path.join(output_subdir, os.path.basename(filepath))
         filepath = strip_metadata(filepath)
-        print("Step 4: Metadata stripped.")
+        os.rename(filepath, processed_filepath)  # Save the processed file in the output directory
+        print(f"Step 4: Metadata stripped. Processed file saved as {processed_filepath}.")
 
         # Step 5: Get audio length
-        audio_length = get_audio_length(filepath)
+        audio_length = get_audio_length(processed_filepath)
         print(f"Step 5: Audio length calculated: {audio_length:.2f} seconds.")
 
         # Indicate successful processing
-        print(f"Processing complete. Processed file saved at: {filepath}")
-        return filepath, audio_length
+        return processed_filepath, audio_length
 
     except ValueError as e:
-        # Handle file and directory-related errors
         print(f"Error during processing: {e}")
-        return None
+        return None, None
     except Exception as e:
-        # Handle unexpected exceptions (e.g., file I/O issues)
         print(f"An unexpected error occurred: {e}")
-        return None
+        return None, None
 
+"""Data Analysis and Visualization"""
+def analyze_audio(filepath, output_dir, timestamp):
+    """
+    Perform full analysis on the audio file.
 
+    Parameters:
+        filepath (str): Path to the processed WAV audio file.
+        output_dir (str): Directory to save plots and results.
+        timestamp (str): Timestamp to uniquely name the output directory.
 
-def calculate_rt60(filepath):
+    Returns:
+        dict: Analysis results including RT60 values, peak frequency, and plot paths.
+    """
+    results = {}
+
     try:
-        if not os.path.exists(filepath):
-            raise ValueError(f"File '{filepath}' not found.")
+        # Use the provided timestamp to create the subdirectory
+        output_subdir = os.path.join(output_dir, timestamp)
+        os.makedirs(output_subdir, exist_ok=True)
 
-        sample_rate, data = wavfile.read(filepath)
+        # Step 1: Calculate RT60 values for low, mid, and high-frequency ranges
+        rt60_values = calculate_rt60_frequency_ranges(filepath)
+        results['rt60_values'] = rt60_values
+        print("Step 1: RT60 values calculated.")
 
-        spectrum, freqs, t, im = plt.specgram(data, Fs=sample_rate, NFFT=1024, cmap=plt.get_cmap('jet'))
+        # Step 2: Identify frequency with the greatest amplitude
+        peak_frequency = get_frequency_with_greatest_amplitude(filepath)
+        results['peak_frequency'] = peak_frequency
+        print(f"Step 2: Peak frequency identified at {peak_frequency:.2f} Hz.")
 
-        db_data = frequency_check(freqs, spectrum)
+        # Step 3: Generate waveform plot
+        waveform_plot = plot_waveform(filepath, output_subdir)
+        results['waveform_plot'] = waveform_plot
+        print(f"Step 3: Waveform plot saved at {waveform_plot}.")
 
-        # Find max value and max value index
-        max_index = np.argmax(db_data)
-        max_value = db_data[max_index]
+        # Step 4: Generate RT60 values plot
+        rt60_plot = plot_rt60_values(rt60_values, output_subdir)
+        results['rt60_plot'] = rt60_plot
+        print(f"Step 4: RT60 plot saved at {rt60_plot}.")
 
-        # Slice max value array -5
-        sliced_array = db_data[max_index:]
+        # Step 5: Generate intensity spectrum plot
+        intensity_plot = plot_intensity_spectrum(filepath, output_subdir)
+        results['intensity_plot'] = intensity_plot
+        print(f"Step 5: Intensity spectrum plot saved at {intensity_plot}.")
 
-        max_minus_5_value = max_value - 5
-        max_minus_5_value = find_nearest_value(sliced_array, max_minus_5_value)
-        max_minus_5_index = np.where(db_data == max_minus_5_value)[0]
+        return results, output_subdir
 
-        if len(max_minus_5_index) == 0:
-            raise ValueError("No values found for -5dB threshold.")
-
-        # Slice max value array -25
-        max_minus_25_value = max_value - 25
-        max_minus_25_value = find_nearest_value(sliced_array, max_minus_25_value)
-        max_minus_25_index = np.where(db_data == max_minus_25_value)[0]
-
-        if len(max_minus_25_index) == 0:
-            raise ValueError("No values found for -5dB threshold.")
-
-        # Find RT20
-        rt20 = (t[max_minus_5_index[0]] - t[max_minus_25_index[0]])  # Access first element of the index array
-        rt60 = rt20 * 3
-        return rt60
-
-    except ValueError as e:
-        print(f"Error during processing: {e}")
-        return None
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-        return None
+        print(f"An error occurred during analysis: {e}")
+        return None, None
 
-def plot_rt60(filepath):
+"""Generate Report & Output"""
+def generate_report(results, output_subdir):
+    """
+    Generate a text report summarizing the analysis results.
+
+    Parameters:
+        results (dict): Analysis results from `analyze_audio`.
+        output_subdir (str): Directory to save the report.
+
+    Returns:
+        str: Path to the saved report file.
+    """
     try:
-        if not os.path.exists(filepath):
-            raise ValueError(f"File '{filepath}' not found.")
+        # Ensure the directory exists
+        os.makedirs(output_subdir, exist_ok=True)
 
-        sample_rate, data = wavfile.read(filepath)
+        # Path for the report
+        report_path = os.path.join(output_subdir, "analysis_report.txt")
 
-        spectrum, freqs, t, im = plt.specgram(data, Fs=sample_rate, NFFT=1024,cmap=plt.get_cmap('jet'))
-        db_data = frequency_check(freqs, spectrum)
+        # Write report content
+        with open(report_path, 'w') as report:
+            # Write RT60 values
+            rt60_values = results.get('rt60_values', {})
+            report.write("RT60 Values (seconds):\n")
+            for freq_range, value in rt60_values.items():
+                report.write(f"  {freq_range.capitalize()}: {value:.2f}s\n")
 
-        plt.figure()
-        plt.plot(t, db_data, linewidth=2, alpha=0.5, color='r')
+            # Write peak frequency
+            peak_frequency = results.get('peak_frequency', None)
+            report.write(f"\nPeak Frequency: {peak_frequency:.2f} Hz\n" if peak_frequency else "\nPeak Frequency: N/A\n")
 
-        # Find max value and max value index
-        max_index = np.argmax(db_data)
-        max_value = db_data[max_index]
-        plt.plot(t[max_index], db_data[max_index], 'go')
+            # Write paths to plots
+            report.write("\nPlots:\n")
+            report.write(f"  Waveform: {results.get('waveform_plot', 'N/A')}\n")
+            report.write(f"  RT60 Plot: {results.get('rt60_plot', 'N/A')}\n")
+            report.write(f"  Intensity Spectrum: {results.get('intensity_plot', 'N/A')}\n")
 
-        # Slice max value array -5
-        sliced_array = db_data[max_index:]
+        print(f"Report generated at {report_path}.")
+        return report_path
 
-        max_minus_5_value = max_value - 5
-        max_minus_5_value = find_nearest_value(sliced_array, max_minus_5_value)
-        max_minus_5_index = np.where(db_data == max_minus_5_value)[0]
-
-        if len(max_minus_5_index) == 0:
-            raise ValueError("No values found for -5dB threshold.")
-
-        plt.plot(t[max_minus_5_index], db_data[max_minus_5_index], 'yo')
-
-        # Slice max value array -25
-        max_minus_25_value = max_value - 25
-        max_minus_25_value = find_nearest_value(sliced_array, max_minus_25_value)
-        max_minus_25_index = np.where(db_data == max_minus_25_value)[0]
-
-        if len(max_minus_25_index) == 0:
-            raise ValueError("No values found for -5dB threshold.")
-
-        plt.plot(t[max_minus_25_index], db_data[max_minus_25_index], 'ro')
-
-        # Find RT20
-        rt20 = (t[max_minus_5_index[0]] - t[max_minus_25_index[0]])  # Access first element of the index array
-        rt60 = rt20 * 3
-
-        plt.grid()
-        plt.show()
-
-
-        print(f'The RT60 at {cycle_frequency_number()}Hz is {round(abs(rt60), 2)} seconds')
-
-        # global average_rt60
-        global rt60_difference
-
-        r1 = calculate_rt60(filepath)
-        cycle_frequency_input()
-        r2 = calculate_rt60(filepath)
-        cycle_frequency_input()
-        r3 = calculate_rt60(filepath)
-        cycle_frequency_input()
-        average_rt60 = round((round(abs(r1), 2) + round(abs(r2), 2) + round(abs(r3), 2)) / 3, 2)
-        print(f'Average Rt60 is: {average_rt60}')
-        rt60_difference = round(average_rt60-0.5,2)
-        print(f"Rt60 difference is:{rt60_difference}")
-    except ValueError as e:
-        print(f"Error during processing: {e}")
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-
-def call_average_rt60(filepath):
-    r1 = calculate_rt60(filepath)
-    cycle_frequency_input()
-    r2 = calculate_rt60(filepath)
-    cycle_frequency_input()
-    r3 = calculate_rt60(filepath)
-    cycle_frequency_input()
-    average_rt60 = round((round(abs(r1), 2) + round(abs(r2), 2) + round(abs(r3), 2)) / 3, 2)
-    return average_rt60
-def call_rt60_difference(filepath):
-    var = call_average_rt60(filepath)
-    difference = round(var-0.5,2)
-    return difference
+        print(f"Failed to generate report: {e}")
+        return None

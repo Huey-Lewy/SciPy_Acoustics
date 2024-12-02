@@ -2,15 +2,19 @@
 All data models (e.g., audio processing and RT60 calculations)
 Authors:
     - Zackariah A.
+    - Aidan H.
 """
 
 import os
-import matplotlib.pyplot as plt
 from pydub import AudioSegment
 import numpy as np
 from scipy.io import wavfile
+from scipy.signal import butter, lfilter
+from scipy import fftpack
+import matplotlib.pyplot as plt
 
-"""Check if the file format is WAV or MP3."""
+
+"""Data Cleaning & Processing"""
 def check_file_format(filepath):
     # Define allowed file formats for processing
     allowed_formats = ('.wav', '.mp3')
@@ -76,109 +80,252 @@ def get_audio_length(filepath):
     return length_in_seconds
 
 
-'''Calculate RT60.'''
-target_frequency = 250
-def set_target_frequency(cycle):
-    global target_frequency
-    if cycle == 1:
-        return 250
-    elif cycle == 2:
-        return 1000
-    elif cycle == 3:
-        return 1750
+"""Data Analysis and Visualization"""
+def calculate_rt60(audio_data, sample_rate):
+    """
+    Calculate the RT60 (reverberation time) using the Schroeder method.
+
+    Parameters:
+        audio_data (numpy.ndarray): Audio signal data.
+        sample_rate (int): Sampling rate of the audio data.
+
+    Returns:
+        float: RT60 value in seconds, or 0.0 if insufficient decay is detected.
+    """
+    # Normalize audio_data to prevent overflow during squaring
+    audio_data = audio_data / np.max(np.abs(audio_data))
+    audio_data = audio_data.astype(np.float64)  # Ensure float64 precision
+
+    # Square of the signal for energy
+    energy = audio_data ** 2
+
+    # Reverse cumulative sum to get the energy decay curve
+    energy_rev = np.flip(energy)
+    energy_decay = np.cumsum(energy_rev)
+    energy_decay = np.flip(energy_decay)
+
+    # Convert to decibels
+    energy_db = 10 * np.log10(energy_decay / np.max(energy_decay) + 1e-10)  # Add epsilon to avoid log(0)
+
+    # Find indices where the decay crosses -5 dB and -35 dB
+    try:
+        idx_5db = np.where(energy_db <= -5)[0][0]
+        idx_35db = np.where(energy_db <= -35)[0][0]
+    except IndexError:
+        # If the signal doesn't decay enough, return 0.0
+        return 0.0
+
+    t_5db = idx_5db / sample_rate
+    t_35db = idx_35db / sample_rate
+
+    # Calculate RT60 using the decay time between -5 dB and -35 dB
+    rt60 = (t_35db - t_5db) * 2  # Extrapolate to -60 dB
+
+    return rt60
+
+def bandpass_filter(audio_data, sample_rate, lowcut, highcut, order=4):
+    """
+    Apply a Butterworth bandpass filter to the audio data.
+
+    Parameters:
+        audio_data (numpy.ndarray): Audio signal data.
+        sample_rate (int): Sampling rate.
+        lowcut (float): Low frequency cutoff.
+        highcut (float): High frequency cutoff.
+        order (int): Order of the filter.
+
+    Returns:
+        numpy.ndarray: Filtered audio data.
+    """
+    nyquist = 0.5 * sample_rate
+    low = lowcut / nyquist
+    high = highcut / nyquist
+
+    b, a = butter(order, [low, high], btype='band')
+    y = lfilter(b, a, audio_data)
+
+    return y
+
+def calculate_rt60_frequency_ranges(filepath, freq_ranges=None):
+    """
+    Calculate RT60 values for specified frequency ranges.
+
+    Parameters:
+        filepath (str): Path to the WAV audio file.
+        freq_ranges (dict): Optional dictionary of frequency ranges.
+                            Defaults to low, mid, and high ranges.
+
+    Returns:
+        dict: RT60 values for each specified frequency range.
+    """
+    # Load the audio data
+    try:
+        sample_rate, data = wavfile.read(filepath)
+    except Exception as e:
+        raise IOError(f"Failed to read audio file '{filepath}': {e}")
+
+    # Normalize data to float32 with safety checks
+    epsilon = 1e-10
+    max_val = np.max(np.abs(data))
+    if max_val > epsilon:
+        data = data.astype(np.float32) / max_val
     else:
-        return 9
+        data = np.zeros_like(data)
 
-def find_target_frequency(freqs):
-    for x in freqs:
-        if x > set_target_frequency(input_cycle):
-            break
-    return x
+    # Default frequency ranges
+    if freq_ranges is None:
+        freq_ranges = {
+            'low': (20, 250),
+            'mid': (250, 2000),
+            'high': (2000, 20000)
+        }
 
-def cycle_frequency_number():
-    return set_target_frequency(input_cycle)
+    rt60_values = {}
 
+    for key, (lowcut, highcut) in freq_ranges.items():
+        filtered_data = bandpass_filter(data, sample_rate, lowcut, highcut)
+        rt60 = calculate_rt60(filtered_data, sample_rate)
+        rt60_values[key] = rt60
 
-def find_resonance_frequency(freqs,i):
-    for x in freqs:
-        if x > i:
-            break
-    return x
+    return rt60_values
 
+def get_frequency_with_greatest_amplitude(filepath):
+    """
+    Identify the frequency with the greatest amplitude in the audio file.
 
-input_cycle = 0
-def cycle_frequency_input():
-    global input_cycle
-    if 3 > input_cycle > 0:
-        input_cycle+= 1
+    Parameters:
+        filepath (str): Path to the WAV audio file.
+
+    Returns:
+        float: Frequency in Hz with the greatest amplitude.
+    """
+    sample_rate, data = wavfile.read(filepath)
+
+    # If stereo, take one channel
+    if len(data.shape) > 1:
+        data = data[:, 0]
+
+    # Apply FFT with windowing to reduce spectral leakage
+    window = np.hanning(len(data))
+    data_windowed = data * window
+    yf = fftpack.fft(data_windowed)
+    xf = fftpack.fftfreq(len(data), 1 / sample_rate)
+
+    # Take only the positive frequencies
+    idxs = np.where(xf >= 0)
+    xf = xf[idxs]
+    yf = np.abs(yf[idxs])
+
+    # Find the frequency with the highest amplitude
+    idx = np.argmax(yf)
+    freq = xf[idx]
+
+    return freq
+
+def plot_waveform(filepath, output_dir):
+    """
+    Plot the waveform of the audio file and save the figure.
+
+    Parameters:
+        filepath (str): Path to the WAV audio file.
+        output_dir (str): Directory to save the plot.
+
+    Returns:
+        str: Path to the saved plot image.
+    """
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    sample_rate, data = wavfile.read(filepath)
+    times = np.arange(len(data)) / float(sample_rate)
+
+    plt.figure(figsize=(10, 4))
+    plt.plot(times, data)
+    plt.title('Waveform')
+    plt.xlabel('Time (s)')
+    plt.ylabel('Amplitude')
+    plt.tight_layout()
+
+    plot_path = os.path.join(output_dir, 'waveform.png')
+    plt.savefig(plot_path)
+    plt.close()
+
+    return plot_path
+
+def plot_rt60_values(rt60_values, output_dir):
+    """
+    Plot the RT60 values for different frequency ranges.
+
+    Parameters:
+        rt60_values (dict): RT60 values with keys 'low', 'mid', 'high'.
+        output_dir (str): Directory to save the plot.
+
+    Returns:
+        str: Path to the saved plot image.
+    """
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    frequency_ranges = list(rt60_values.keys())
+    rt60_list = [rt60_values[fr] for fr in frequency_ranges]
+
+    plt.figure(figsize=(6, 4))
+    plt.bar(frequency_ranges, rt60_list, color='skyblue')
+    plt.title('RT60 Values')
+    plt.xlabel('Frequency Range')
+    plt.ylabel('RT60 (s)')
+    plt.tight_layout()
+
+    plot_path = os.path.join(output_dir, 'rt60_values.png')
+    plt.savefig(plot_path)
+    plt.close()
+
+    return plot_path
+
+def plot_intensity_spectrum(filepath, output_dir):
+    """
+    Plot the intensity spectrum of the audio file.
+
+    Parameters:
+        filepath (str): Path to the WAV audio file.
+        output_dir (str): Directory to save the plot.
+
+    Returns:
+        str: Path to the saved plot image.
+    """
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    sample_rate, data = wavfile.read(filepath)
+
+    # Normalize data
+    epsilon = 1e-10
+    max_val = np.max(np.abs(data))
+    if max_val > epsilon:
+        data = data.astype(np.float32) / max_val
     else:
-        input_cycle = 1
+        data = np.zeros_like(data)
 
+    num_samples = len(data)
+    window = np.hanning(num_samples)
+    data_windowed = data * window
+    yf = fftpack.fft(data_windowed)
+    xf = fftpack.fftfreq(num_samples, 1 / sample_rate)
 
-def frequency_check(freqs,spectrum):
+    # Take only the positive frequencies
+    idxs = np.where(xf >= 0)
+    xf = xf[idxs]
+    yf = np.abs(yf[idxs])
 
-    target_frequency = find_target_frequency(freqs)
-    index_of_frequency = np.where(freqs == target_frequency)[0][0]
-    data_for_frequency = spectrum[index_of_frequency]
-    db_data_fun = 10 * np.log10(data_for_frequency)
-    return db_data_fun
+    plt.figure(figsize=(10, 4))
+    plt.plot(xf, yf)
+    plt.title('Intensity Spectrum')
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('Amplitude')
+    plt.tight_layout()
 
-def find_nearest_value(array, value):
-    array = np.asarray(array)
-    idx = (np.abs(array - value)).argmin()
-    return array[idx]
+    plot_path = os.path.join(output_dir, 'intensity_spectrum.png')
+    plt.savefig(plot_path)
+    plt.close()
 
-def find_resonance(filepath):
-    max_resonance_rt60 = 0
-    max_resonance_value = 0
-    for i in range(50,5000,50):
-        try:
-            if not os.path.exists(filepath):
-                raise ValueError(f"File '{filepath}' not found.")
-
-            sample_rate, data = wavfile.read(filepath)
-
-            spectrum, freqs, t, im = plt.specgram(data, Fs=sample_rate, NFFT=1024, cmap=plt.get_cmap('jet'))
-
-            var = find_resonance_frequency(freqs,i)
-            index_of_frequency = np.where(freqs == var)[0][0]
-            data_for_frequency = spectrum[index_of_frequency]
-            db_data = 10 * np.log10(data_for_frequency)
-
-            # Find max value and max value index
-            max_index = np.argmax(db_data)
-            max_value = db_data[max_index]
-
-            # Slice max value array -5
-            sliced_array = db_data[max_index:]
-
-            max_minus_5_value = max_value - 5
-            max_minus_5_value = find_nearest_value(sliced_array, max_minus_5_value)
-            max_minus_5_index = np.where(db_data == max_minus_5_value)[0]
-
-            if len(max_minus_5_index) == 0:
-                raise ValueError("No values found for -5dB threshold.")
-
-            # Slice max value array -25
-            max_minus_25_value = max_value - 25
-            max_minus_25_value = find_nearest_value(sliced_array, max_minus_25_value)
-            max_minus_25_index = np.where(db_data == max_minus_25_value)[0]
-
-            if len(max_minus_25_index) == 0:
-                raise ValueError("No values found for -5dB threshold.")
-
-            # Find RT20
-            rt20 = (t[max_minus_5_index[0]] - t[max_minus_25_index[0]])  # Access first element of the index array
-            rt60 = rt20 * 3
-
-            if rt60 > max_resonance_rt60:
-                max_resonance_rt60 = rt60
-                max_resonance_value = i
-        except ValueError as e:
-            print(f"Error during processing: {e}")
-            return None
-        except Exception as e:
-            print(f"An unexpected error occurred: {e}")
-            return None
-
-    return max_resonance_value
+    return plot_path
