@@ -7,7 +7,13 @@ Authors:
 
 import os
 from pydub import AudioSegment
+import numpy as np
+from scipy.io import wavfile
+from scipy.signal import butter, lfilter
+import matplotlib.pyplot as plt
 
+# Global parameters
+FIGURE_SIZE = (10, 6)   # Figure Size
 
 """Data Cleaning & Processing"""
 def check_file_format(filepath):
@@ -76,3 +82,38 @@ def get_audio_length(filepath):
 
 
 """Data Analysis and Visualization"""
+def read_audio(filepath):
+    """
+    Read and preprocess audio data from a file.
+
+    Parameters:
+        filepath (str): Path to the audio file.
+
+    Returns:
+        tuple: Sample rate and audio data as a NumPy array.
+    """
+    sample_rate, data = wavfile.read(filepath)
+
+    # Ensure data is mono (redundancy check removed)
+    data = data.astype(np.float32) / np.max(np.abs(data))   # Normalize data
+    return sample_rate, data
+
+def plot_intensity(filepath, output_dir):
+    """Generate and save an Intensity Graph (Spectrogram)."""
+
+    # return plot_path
+
+def plot_waveform(filepath, output_dir):
+    """Generate and save a Waveform Graph."""
+
+    # return plot_path
+
+def plot_individual_rt60(filepath, output_dir, freq_ranges):
+    """Generate RT60 graphs for Low, Medium, and High Frequencies."""
+
+    # return plot_paths
+
+def plot_combined_rt60(filepath, output_dir, freq_ranges):
+    """Generate a combined RT60 graph for low, Medium, and High Frequencies."""
+
+    # return plot_path

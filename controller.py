@@ -6,9 +6,8 @@ Authors:
 """
 
 import os
-from model import (
-    check_file_format, convert_mp3_to_wav, ensure_single_channel, strip_metadata, get_audio_length
-)
+from model import (check_file_format, convert_mp3_to_wav, ensure_single_channel, strip_metadata, get_audio_length,
+                   read_audio, plot_intensity, plot_waveform, plot_individual_rt60, plot_combined_rt60)
 
 """Data Cleaning & Processing"""
 def process_audio_file(filepath, output_subdir):
@@ -65,5 +64,45 @@ def process_audio_file(filepath, output_subdir):
         return None, None
 
 """Data Analysis and Visualization"""
+def analyze_audio(filepath, output_dir, timestamp):
+    """
+    Perform full analysis on the audio file.
 
-"""Generate Report & Output"""
+    Parameters:
+        filepath (str): Path to the processed WAV audio file.
+        output_dir (str): Directory to save plots and results.
+        timestamp (str): Timestamp to uniquely name the output directory.
+
+    Returns:
+        dict: Analysis results including RT60 values, peak frequency, and plot paths.
+    """
+    results = {}
+
+    try:
+        # Use the provided timestamp to create the subdirectory
+        output_subdir = os.path.join(output_dir, timestamp)
+        os.makedirs(output_subdir, exist_ok=True)
+
+        # Step 1: Identify frequency with the greatest amplitude
+        #   print(f"Step 1: Peak frequency identified at {peak_frequency:.2f} Hz.")
+
+        # Step 2: Calculate RT60 values for low, mid, and high-frequency ranges
+        #   print("Step 2: RT60 values calculated.")
+
+        # Step 3: Generate Intensity Graph
+        #   print(f"Step 3: Intensity Graph saved at {intensity_graph}.")
+
+        # Step 4: Generate Waveform Graph
+        #   print(f"Step 4: Waveform Graph saved at {waveform_graph}.")
+
+        # Step 5: Generate Individual RT60 Graphs (Low, Medium, High)
+        #   print(f"Step 5: Individual RT60 Graphs saved at {rt60_graphs}.")
+
+        # Step 6: Generate Combined RT60 Graphs (Low, Medium, High)
+        #   print(f"Step 5: Combined RT60 Graphs saved at {rt60_graph}.")
+
+        # return results, output_subdir
+
+    except Exception as e:
+        print(f"An error occurred during analysis: {e}")
+        return None, None
