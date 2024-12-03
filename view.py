@@ -148,7 +148,7 @@ class AudioGUI:
     def setup_gui(self):
         """Sets up the GUI layout."""
         # Canvas
-        self.canvas = tk.Canvas(self.master, height=600, width=800)
+        self.canvas = tk.Canvas(self.master, height=800, width=1000)
         self.canvas.pack()
 
         # File selection frame
@@ -157,11 +157,11 @@ class AudioGUI:
 
         # File selection button and label
         bf_button = tk.Button(file_frame, text="Select File", command=self.browse_files, font=5)
-        bf_button.place(relx=0.001, relwidth=0.15, relheight=0.5)
+        bf_button.place(relx=0.001,rely = 0, relwidth=0.15, relheight=0.5)
         self.af_button = tk.Button(file_frame, text="Analyze File", command=self.analyze_file, font=5)
 
         self.fn_label = tk.Label(file_frame, text="File Opened: None")
-        self.fn_label.place(relwidth=0.35, relheight=0.35, relx=0.2, rely=0.5)
+        self.fn_label.place(relwidth=0.35, relheight=0.35, relx=0.25, rely=0)
 
         # Plot frame to display images
         self.plot_frame = tk.Frame(self.master, bg="white", bd=5)
@@ -172,18 +172,18 @@ class AudioGUI:
         ui.place(relx=0.5, rely=0.7, relwidth=0.75, relheight=0.25, anchor="n")
 
         # Visualization and report buttons
-        waveform_button = tk.Button(ui, text="View Waveform", font=5, command=self.display_waveform)
-        rt60_button = tk.Button(ui, text="View RT60 Plot", font=5, command=self.display_rt60_plot)
-        intensity_button = tk.Button(ui, text="View Intensity Spectrum", font=5, command=self.display_intensity_spectrum)
-        report_button = tk.Button(ui, text="Generate Report", font=5, command=self.generate_report)
+        waveform_button = tk.Button(ui, text="View Waveform", font=2, command=self.display_waveform)
+        rt60_button = tk.Button(ui, text="View RT60 Plot", font=2, command=self.display_rt60_plot)
+        intensity_button = tk.Button(ui, text="View Intensity Spectrum", font=1, command=self.display_intensity_spectrum)
+        report_button = tk.Button(ui, text="Generate Report", font=2, command=self.generate_report)
 
-        waveform_button.place(relx=0.15, rely=0.1, relwidth=0.3, relheight=0.3)
-        rt60_button.place(relx=0.55, rely=0.1, relwidth=0.3, relheight=0.3)
-        intensity_button.place(relx=0.15, rely=0.5, relwidth=0.3, relheight=0.3)
-        report_button.place(relx=0.55, rely=0.5, relwidth=0.3, relheight=0.3)
+        waveform_button.place(relx=0.42, rely=0.1, relwidth=0.27, relheight=0.2)
+        rt60_button.place(relx=0.72, rely=0.1, relwidth=0.27, relheight=0.2)
+        intensity_button.place(relx=0.42, rely=0.5, relwidth=0.27, relheight=0.2)
+        report_button.place(relx=0.72, rely=0.5, relwidth=0.27, relheight=0.2)
 
         self.info = tk.Label(ui, text="Select a file to begin processing.", font=5)
-        self.info.place(relx=0.5, rely=0.85, anchor="n")
+        self.info.place(relx=0.2, rely=0.1, anchor="n")
 
 if __name__ == "__main__":
     master = tk.Tk()
