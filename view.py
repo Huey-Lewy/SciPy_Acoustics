@@ -9,7 +9,7 @@ Authors:
 import os
 import tkinter as tk
 from tkinter import filedialog, messagebox
-from controller import process_audio_file, analyze_audio, generate_report
+from controller import process_audio_file
 
 
 class AudioGUI:
