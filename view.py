@@ -62,7 +62,7 @@ class AudioGUI:
                 return
 
             # Analyze the processed file
-            self.analysis_results, _ = analyze_audio(processed_file, output_dir, self.timestamp)
+            # self.analysis_results, _ = analyze_audio(processed_file, output_dir, self.timestamp)
             if not self.analysis_results:
                 self.info.config(text="Error analyzing the file.", font=self.button_font)
                 return
@@ -86,8 +86,8 @@ class AudioGUI:
             messagebox.showinfo("Info", "No analysis results available. Analyze a file first.")
             return
 
-        # Example usage: plot_path = self.analysis_results['spectrogram_plot']
-        self.show_placeholder("Intensity Graph")
+        # Placeholder: Intensity Graph
+        # self.show("Intensity Graph")
 
     def display_waveform_graph(self):
         """Displays the waveform graph."""
@@ -95,18 +95,26 @@ class AudioGUI:
             messagebox.showinfo("Info", "No analysis results available. Analyze a file first.")
             return
 
-        plot_path = self.analysis_results['waveform_plot']
-        self.show_image(plot_path)
+        # Placeholder: Waveform Graph
+        # self.show("Waveform Graph")
 
     def display_cycle_rt60_graphs(self):
         """Cycles through low, mid, and high RT60 graphs."""
+        if not self.analysis_results:
+            messagebox.showinfo("Info", "No analysis results available. Analyze a file first.")
+            return
+
         # Placeholder: Logic to cycle through RT60 graphs
-        self.show_placeholder("Cycle RT60 Graphs")
+        # self.show("Cycle RT60 Graphs")
 
     def display_combined_rt60_graphs(self):
         """Displays the combined RT60 graph."""
+        if not self.analysis_results:
+            messagebox.showinfo("Info", "No analysis results available. Analyze a file first.")
+            return
+
         # Placeholder: Combined RT60 graph logic
-        self.show_placeholder("Combined RT60 Graphs")
+        # self.show("Combined RT60 Graphs")
 
     def show_image(self, plot_path):
         """Displays an image in the GUI."""
@@ -125,10 +133,6 @@ class AudioGUI:
             img_label.pack()
         except Exception as e:
             messagebox.showerror("Error", f"Unable to display the image: {str(e)}")
-
-    def show_placeholder(self, graph_name):
-        """Displays a placeholder for functionality not yet implemented."""
-        messagebox.showinfo("Placeholder", f"{graph_name} functionality is not yet implemented.")
 
     def setup_gui(self):
         """Sets up the GUI layout."""
