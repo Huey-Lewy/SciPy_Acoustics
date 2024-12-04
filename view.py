@@ -16,11 +16,11 @@ class AudioGUI:
         self.audiofile = None           # Selected audio file path
         self.analysis_results = None    # Analysis results dictionary
         self.plot_paths = None          # Paths to generated plots
-        self.canvas = None
-        self.af_button = None
-        self.fn_label = None
-        self.plot_frame = None
-        self.info = None
+        self.canvas = None      # Placeholder for GUI Canvases
+        self.af_button = None   # Placeholder for GUI Buttons
+        self.fn_label = None    # Placeholder for GUI Labels
+        self.plot_frame = None  # Placeholder for GUI Frames
+        self.info = None        # Placeholder for GUI Info
         self.current_rt60_plot = 0      # Index to cycle through RT60 plots
         self.freq_labels = ['low', 'mid', 'high']  # Labels for RT60 plots
         self.button_font = ("Arial Bold", 12)      # Global font for buttons

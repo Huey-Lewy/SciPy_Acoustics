@@ -209,11 +209,21 @@ def plot_waveform(filepath, output_dir):
     return plot_path
 
 def plot_individual_rt60(filepath, output_dir, freq_ranges):
-    """Generate Individual RT60 graphs for Low, Medium, and High Frequencies."""
+    """Generate Individual RT60 graphs for Low, Medium, and High Frequencies with consistent y-axis range."""
     sample_rate, data = read_audio(filepath)
     plot_paths = {}
-    labels = ['Low', 'Medium', 'High']
+    labels = ['Low', 'Mid', 'High']
+    all_energy_db = []
 
+    # Step 1: Calculate energy_db for all frequency ranges to determine global min and max
+    for freq_range in freq_ranges:
+        _, energy_db = process_frequency_range(data, sample_rate, freq_range)
+        all_energy_db.extend(energy_db)  # Collect all energy values
+
+    global_min = min(all_energy_db) - 2
+    global_max = max(all_energy_db) + 2
+
+    # Step 2: Generate plots with consistent y-axis range
     for freq_range, label in zip(freq_ranges, labels):
         time, energy_db = process_frequency_range(data, sample_rate, freq_range)
 
@@ -223,6 +233,9 @@ def plot_individual_rt60(filepath, output_dir, freq_ranges):
         plt.xlabel('Time (seconds)')
         plt.ylabel('Power (dB)')
 
+        # Set consistent y-axis limits
+        plt.ylim(global_min, global_max)
+
         plot_path = os.path.join(output_dir, f"{label.lower()}_rt60_graph.png")
         plt.savefig(plot_path)
         plt.close()
@@ -231,21 +244,31 @@ def plot_individual_rt60(filepath, output_dir, freq_ranges):
     return plot_paths
 
 def plot_combined_rt60(filepath, output_dir, freq_ranges):
-    """Generate Combined RT60 graphs for Low, Medium, and High Frequencies."""
+    """Generate Combined RT60 graphs for Low, Medium, and High Frequencies with consistent y-axis range."""
     sample_rate, data = read_audio(filepath)
-    labels = ['Low', 'Medium', 'High']
+    labels = ['Low', 'Mid', 'High']
     colors = ['blue', 'green', 'red']
+    all_energy_db = []
 
+    # Step 1: Calculate energy_db for all frequency ranges to determine global min and max
+    for freq_range in freq_ranges:
+        _, energy_db = process_frequency_range(data, sample_rate, freq_range)
+        all_energy_db.extend(energy_db)  # Collect all energy values
+
+    global_min = min(all_energy_db) - 2
+    global_max = max(all_energy_db) + 2
+
+    # Step 2: Plot all frequency ranges with consistent y-axis limits
     plt.figure(figsize=FIGURE_SIZE)
 
     for freq_range, label, color in zip(freq_ranges, labels, colors):
         time, energy_db = process_frequency_range(data, sample_rate, freq_range)
-
         plt.plot(time, energy_db, label=f'{label} Frequency', linewidth=1, color=color)
 
     plt.title('Combined RT60 Graph')
     plt.xlabel('Time (seconds)')
     plt.ylabel('Power (dB)')
+    plt.ylim(global_min, global_max)  # Set consistent y-axis limits
     plt.legend()
 
     plot_path = os.path.join(output_dir, "combined_rt60_graph.png")
