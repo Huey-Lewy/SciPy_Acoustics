@@ -8,10 +8,9 @@ Authors:
 import os
 from pydub import AudioSegment
 import numpy as np
-from scipy.io import wavfile
-from scipy.signal import butter, lfilter
-from scipy.signal import spectrogram
 import matplotlib.pyplot as plt
+from scipy.signal import butter, lfilter, spectrogram
+from scipy.io import wavfile
 
 # Global parameters
 FIGURE_SIZE = (8, 4)   # Figure Size
@@ -98,76 +97,22 @@ def read_audio(filepath):
     data = data.astype(np.float32) / np.max(np.abs(data))
     return sample_rate, data
 
-def filter_and_calculate_energy(data, sample_rate, freq_range):
-    """
-    Apply a bandpass filter and calculate energy in dB for the specified frequency range.
-
-    Parameters:
-        data (np.ndarray): Audio data.
-        sample_rate (int): Sampling rate of the audio.
-        freq_range (tuple): Low and high cutoff frequencies (Hz).
-
-    Returns:
-        np.ndarray: Energy in dB for the filtered audio.
-    """
-    # Normalize frequency range using the Nyquist frequency
-    nyquist = 0.5 * sample_rate
-    low = freq_range[0] / nyquist
-    high = freq_range[1] / nyquist
-
-    # Create a second-order bandpass filter
-    b, a = butter(2, [low, high], btype='band')
-
-    # Apply the bandpass filter to the audio data
-    filtered_data = lfilter(b, a, data)
-
-    # Compute energy as the square of the filtered signal
-    energy = filtered_data ** 2
-
-    # Convert energy to decibels (logarithmic scale)
-    energy[energy <= 1e-10] = 1e-10  # Replace zeros or near-zeros with the threshold
-    energy_db = 10 * np.log10(energy)
-
-    return energy_db
-
 def calculate_rt60(data, sample_rate, freq_range):
     """
-    Calculate the RT60 reverberation time for a given frequency range.
+    Calculate the RT60 reverberation time for a given frequency range using the Schroeder method.
 
     Parameters:
         data (np.ndarray): Audio data (1D array).
         sample_rate (int): Sampling rate of the audio.
-        freq_range (tuple): Low and high cutoff frequencies (Hz) as a tuple.
+        freq_range (tuple): Low and high cutoff frequencies (Hz).
 
     Returns:
         float: Estimated RT60 value in seconds.
     """
-    # Get energy in dB for the specified frequency range
-    energy_db = filter_and_calculate_energy(data, sample_rate, freq_range)
-
-    # Find the peak energy level and its index
-    max_db = np.max(energy_db)
-    max_idx = np.argmax(energy_db)
-
-    # Calculate thresholds for -5dB and -25dB below the peak
-    threshold_5db = max_db - 5
-    threshold_25db = max_db - 25
-
-    # Locate the time indices where the energy falls below each threshold
-    idx_5db = np.where(energy_db[max_idx:] < threshold_5db)[0][0] + max_idx
-    idx_25db = np.where(energy_db[max_idx:] < threshold_25db)[0][0] + max_idx
-
-    # Compute RT20 as the time difference between the two points
-    time_5db = idx_5db / sample_rate
-    time_25db = idx_25db / sample_rate
-    rt20 = time_25db - time_5db
-
-    # Scale RT20 to RT60 (standard approximation)
-    return rt20 * 3
 
 def process_frequency_range(data, sample_rate, freq_range):
     """
-    Filter the data for the given frequency range and calculate energy in dB over time.
+    Filter the data for the given frequency range using a Butterworth bandpass filter.
 
     Parameters:
         data (np.ndarray): Audio data.
@@ -175,17 +120,8 @@ def process_frequency_range(data, sample_rate, freq_range):
         freq_range (tuple): Low and high cutoff frequencies (Hz).
 
     Returns:
-        tuple: Time array (np.ndarray) and energy in dB (np.ndarray).
+        np.ndarray: Filtered audio data.
     """
-    # Get energy in dB for the specified frequency range
-    energy_db = filter_and_calculate_energy(data, sample_rate, freq_range)
-
-    # Create a time axis for the energy data
-    n_samples = len(energy_db)
-    duration = n_samples / sample_rate
-    time = np.linspace(0, duration, n_samples)
-
-    return time, energy_db
 
 """Data Visualization"""
 def plot_intensity(filepath, output_dir):

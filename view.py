@@ -9,7 +9,7 @@ Authors:
 import os
 import tkinter as tk
 from tkinter import filedialog, messagebox
-from controller import process_audio_file, analyze_audio, generate_plots
+from controller import process_audio_file, analyze_audio
 
 class AudioGUI:
     def __init__(self, root):
@@ -45,7 +45,7 @@ class AudioGUI:
 
         try:
             # Define output directory
-            output_dir = "output_files"
+            output_dir = "data/outputs"
             os.makedirs(output_dir, exist_ok=True)
 
             # Generate a timestamp for this analysis session
@@ -63,13 +63,8 @@ class AudioGUI:
             # Analyze the processed file
             self.analysis_results = analyze_audio(processed_file, output_subdir, timestamp)
 
-            # Generate plots
-            freq_ranges = [
-                (20, 250),     # Low
-                (250, 2000),   # Mid
-                (2000, 20000)  # High
-            ]
-            self.plot_paths = generate_plots(processed_file, output_subdir, freq_ranges)
+            # Retrieve plots from the results
+            self.plot_paths = self.analysis_results.get('plots', {})
 
             # Display analysis results
             rt60 = self.analysis_results['rt60_values']
