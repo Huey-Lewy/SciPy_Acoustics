@@ -6,10 +6,11 @@ Authors:
 """
 
 import os
+import numpy as np
 from model import (
     check_file_format, convert_mp3_to_wav, ensure_single_channel, strip_metadata, get_audio_length,
-    calculate_rt60_frequency_ranges, get_frequency_with_greatest_amplitude,
-    plot_waveform, plot_rt60_values, plot_intensity_spectrum
+    read_audio, calculate_rt60_difference,
+    plot_intensity, plot_waveform, plot_individual_rt60, plot_combined_rt60
 )
 
 """Data Cleaning & Processing"""
@@ -66,7 +67,7 @@ def process_audio_file(filepath, output_subdir):
         print(f"An unexpected error occurred: {e}")
         return None, None
 
-"""Data Analysis and Visualization"""
+"""Data Analysis and Calculations"""
 def analyze_audio(filepath, output_dir, timestamp):
     """
     Perform full analysis on the audio file.
@@ -77,86 +78,71 @@ def analyze_audio(filepath, output_dir, timestamp):
         timestamp (str): Timestamp to uniquely name the output directory.
 
     Returns:
-        dict: Analysis results including RT60 values, peak frequency, and plot paths.
+        dict: Analysis results including RT60 values and peak frequency.
     """
-    results = {}
-
     try:
-        # Use the provided timestamp to create the subdirectory
-        output_subdir = os.path.join(output_dir, timestamp)
-        os.makedirs(output_subdir, exist_ok=True)
+        # Read the audio data
+        sample_rate, data = read_audio(filepath)
 
-        # Step 1: Calculate RT60 values for low, mid, and high-frequency ranges
-        rt60_values = calculate_rt60_frequency_ranges(filepath)
-        results['rt60_values'] = rt60_values
-        print("Step 1: RT60 values calculated.")
+        # Define frequency ranges for low, mid, and high frequencies (in Hz)
+        freq_ranges = {
+            'low': (20, 250),
+            'mid': (250, 2000),
+            'high': (2000, 20000)
+        }
 
-        # Step 2: Identify frequency with the greatest amplitude
-        peak_frequency = get_frequency_with_greatest_amplitude(filepath)
-        results['peak_frequency'] = peak_frequency
-        print(f"Step 2: Peak frequency identified at {peak_frequency:.2f} Hz.")
+        # Perform FFT to find the frequency with the greatest amplitude
+        fft_data = np.fft.fft(data)
+        fft_freq = np.fft.fftfreq(len(data), d=1/sample_rate)
 
-        # Step 3: Generate waveform plot
-        waveform_plot = plot_waveform(filepath, output_subdir)
-        results['waveform_plot'] = waveform_plot
-        print(f"Step 3: Waveform plot saved at {waveform_plot}.")
+        # Use only positive frequencies
+        positive_freqs = fft_freq[:len(fft_freq) // 2]
+        positive_fft_data = np.abs(fft_data[:len(fft_data) // 2])
 
-        # Step 4: Generate RT60 values plot
-        rt60_plot = plot_rt60_values(rt60_values, output_subdir)
-        results['rt60_plot'] = rt60_plot
-        print(f"Step 4: RT60 plot saved at {rt60_plot}.")
+        # Find the peak frequency and time difference
+        peak_idx = np.argmax(positive_fft_data)
+        peak_frequency = positive_freqs[peak_idx]
+        rt60_difference = calculate_rt60_difference(filepath)
+        print(f"Peak frequency: {peak_frequency:.2f} Hz")
 
-        # Step 5: Generate intensity spectrum plot
-        intensity_plot = plot_intensity_spectrum(filepath, output_subdir)
-        results['intensity_plot'] = intensity_plot
-        print(f"Step 5: Intensity spectrum plot saved at {intensity_plot}.")
+        # Generate plots for analysis (no extra subdirectory creation here)
+        plot_paths = generate_plots(filepath, output_dir, freq_ranges)
 
-        return results, output_subdir
+        # Prepare analysis results
+        results = {
+            'time_difference': rt60_difference,
+            'peak_frequency': peak_frequency,
+            'plots': plot_paths
+        }
+
+        return results
 
     except Exception as e:
         print(f"An error occurred during analysis: {e}")
-        return None, None
+        raise  # Propagate exception
 
-"""Generate Report & Output"""
-def generate_report(results, output_subdir):
+"""Data Visualization"""
+def generate_plots(filepath, output_dir, freq_ranges):
     """
-    Generate a text report summarizing the analysis results.
+    Generate all required plots and save them.
 
     Parameters:
-        results (dict): Analysis results from `analyze_audio`.
-        output_subdir (str): Directory to save the report.
+        filepath (str): Path to the audio file.
+        output_dir (str): Directory to save the plots.
+        freq_ranges (dict): Frequency ranges for RT60 calculations.
 
     Returns:
-        str: Path to the saved report file.
+        dict: Paths to generated plots.
     """
     try:
-        # Ensure the directory exists
-        os.makedirs(output_subdir, exist_ok=True)
-
-        # Path for the report
-        report_path = os.path.join(output_subdir, "analysis_report.txt")
-
-        # Write report content
-        with open(report_path, 'w') as report:
-            # Write RT60 values
-            rt60_values = results.get('rt60_values', {})
-            report.write("RT60 Values (seconds):\n")
-            for freq_range, value in rt60_values.items():
-                report.write(f"  {freq_range.capitalize()}: {value:.2f}s\n")
-
-            # Write peak frequency
-            peak_frequency = results.get('peak_frequency', None)
-            report.write(f"\nPeak Frequency: {peak_frequency:.2f} Hz\n" if peak_frequency else "\nPeak Frequency: N/A\n")
-
-            # Write paths to plots
-            report.write("\nPlots:\n")
-            report.write(f"  Waveform: {results.get('waveform_plot', 'N/A')}\n")
-            report.write(f"  RT60 Plot: {results.get('rt60_plot', 'N/A')}\n")
-            report.write(f"  Intensity Spectrum: {results.get('intensity_plot', 'N/A')}\n")
-
-        print(f"Report generated at {report_path}.")
-        return report_path
-
+        plots = {
+            "intensity": plot_intensity(filepath, output_dir),
+            "waveform": plot_waveform(filepath, output_dir),
+            "individual_rt60": plot_individual_rt60(filepath, output_dir, list(freq_ranges.values())),
+            "combined_rt60": plot_combined_rt60(filepath, output_dir, list(freq_ranges.values())),
+        }
+        print("Plots generated successfully.")
+        return plots
     except Exception as e:
-        print(f"Failed to generate report: {e}")
-        return None
+        print(f"An error occurred while generating plots: {e}")
+        raise

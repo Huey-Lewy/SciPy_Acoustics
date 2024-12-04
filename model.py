@@ -8,11 +8,12 @@ Authors:
 import os
 from pydub import AudioSegment
 import numpy as np
-from scipy.io import wavfile
-from scipy.signal import butter, lfilter
-from scipy import fftpack
 import matplotlib.pyplot as plt
+from scipy.signal import butter, lfilter, spectrogram
+from scipy.io import wavfile
 
+# Global parameters
+FIGURE_SIZE = (8, 4)   # Figure Size
 
 """Data Cleaning & Processing"""
 def check_file_format(filepath):
@@ -80,252 +81,287 @@ def get_audio_length(filepath):
     return length_in_seconds
 
 
-"""Data Analysis and Visualization"""
-def calculate_rt60(audio_data, sample_rate):
+"""Data Analysis and Calculations"""
+def read_audio(filepath):
     """
-    Calculate the RT60 (reverberation time) using the Schroeder method.
+    Read and preprocess audio data from a file.
 
     Parameters:
-        audio_data (numpy.ndarray): Audio signal data.
-        sample_rate (int): Sampling rate of the audio data.
+        filepath (str): Path to the audio file.
 
     Returns:
-        float: RT60 value in seconds, or 0.0 if insufficient decay is detected.
+        tuple: Sample rate and audio data as a NumPy array.
     """
-    # Normalize audio_data to prevent overflow during squaring
-    audio_data = audio_data / np.max(np.abs(audio_data))
-    audio_data = audio_data.astype(np.float64)  # Ensure float64 precision
+    sample_rate, data = wavfile.read(filepath)
+    data = data.astype(np.float32) / np.max(np.abs(data))
+    return sample_rate, data
 
-    # Square of the signal for energy
-    energy = audio_data ** 2
+def process_frequency_range(data, sample_rate, freq_range, epsilon=1e-10):
+    """
+    Enhanced frequency range processing with improved numerical stability.
 
-    # Reverse cumulative sum to get the energy decay curve
-    energy_rev = np.flip(energy)
-    energy_decay = np.cumsum(energy_rev)
-    energy_decay = np.flip(energy_decay)
+    Args:
+        data (np.ndarray): Input audio data
+        sample_rate (int): Audio sampling rate
+        freq_range (tuple): Low and high cutoff frequencies (Hz)
+        epsilon (float): Small value to prevent log(0)
 
-    # Convert to decibels
-    energy_db = 10 * np.log10(energy_decay / np.max(energy_decay) + 1e-10)  # Add epsilon to avoid log(0)
+    Returns:
+        tuple: Times and normalized energy decay in decibels
+    """
+    # Nyquist frequency calculation
+    nyquist = 0.5 * sample_rate
+    low = freq_range[0] / nyquist
+    high = freq_range[1] / nyquist
 
-    # Find indices where the decay crosses -5 dB and -35 dB
-    try:
-        idx_5db = np.where(energy_db <= -5)[0][0]
-        idx_35db = np.where(energy_db <= -35)[0][0]
-    except IndexError:
-        # If the signal doesn't decay enough, return 0.0
-        return 0.0
+    # Bandpass filter creation
+    b, a = butter(2, [low, high], btype='band')
+    filtered_data = lfilter(b, a, data)
 
-    t_5db = idx_5db / sample_rate
-    t_35db = idx_35db / sample_rate
+    # Energy calculation
+    energy = filtered_data ** 2
+    energy_db = 10 * np.log10(energy + epsilon)  # Avoid log(0)
 
-    # Calculate RT60 using the decay time between -5 dB and -35 dB
-    rt60 = (t_35db - t_5db) * 2  # Extrapolate to -60 dB
+    # Create a time axis for the data
+    n_samples = len(data)
+    duration = n_samples / sample_rate
+    time = np.linspace(0, duration, num=n_samples)
+
+    return time, energy_db
+
+def calculate_rt60(data, sample_rate, freq_range, decay_points=None):
+    """
+    Robust RT60 calculation with multiple decay range options.
+
+    Args:
+        data (np.ndarray): Audio data
+        sample_rate (int): Audio sampling rate
+        freq_range (tuple): Target frequency range
+        decay_points (tuple, optional): Custom decay start and end points in dB
+
+    Returns:
+        float: Estimated RT60 value
+    """
+    if decay_points is None:
+        decay_points = (-5, -25)  # Default to -5dB and -25dB
+
+    time, energy_db = process_frequency_range(data, sample_rate, freq_range)
+
+    # Find the peak energy level and corresponding index
+    max_db = np.max(energy_db)
+    max_idx = np.argmax(energy_db)
+
+    # Calculate decay thresholds
+    start_threshold = max_db + decay_points[0]
+    end_threshold = max_db + decay_points[1]
+
+    # Locate time indices for the thresholds
+    start_idx = np.where(energy_db[max_idx:] < start_threshold)[0][0] + max_idx
+    end_idx = np.where(energy_db[max_idx:] < end_threshold)[0][0] + max_idx
+
+    # Convert indices to times
+    t_start = start_idx / sample_rate
+    t_end = end_idx / sample_rate
+
+    # Calculate RT60 from RT20 (standard approximation)
+    rt20 = t_end - t_start
+    rt60 = rt20 * 3
 
     return rt60
 
-def bandpass_filter(audio_data, sample_rate, lowcut, highcut, order=4):
-    """
-    Apply a Butterworth bandpass filter to the audio data.
-
-    Parameters:
-        audio_data (numpy.ndarray): Audio signal data.
-        sample_rate (int): Sampling rate.
-        lowcut (float): Low frequency cutoff.
-        highcut (float): High frequency cutoff.
-        order (int): Order of the filter.
-
-    Returns:
-        numpy.ndarray: Filtered audio data.
-    """
-    nyquist = 0.5 * sample_rate
-    low = lowcut / nyquist
-    high = highcut / nyquist
-
-    b, a = butter(order, [low, high], btype='band')
-    y = lfilter(b, a, audio_data)
-
-    return y
-
-def calculate_rt60_frequency_ranges(filepath, freq_ranges=None):
-    """
-    Calculate RT60 values for specified frequency ranges.
-
-    Parameters:
-        filepath (str): Path to the WAV audio file.
-        freq_ranges (dict): Optional dictionary of frequency ranges.
-                            Defaults to low, mid, and high ranges.
-
-    Returns:
-        dict: RT60 values for each specified frequency range.
-    """
-    # Load the audio data
+def calculate_rt60_difference(filepath):
     try:
+        if not os.path.exists(filepath):
+            raise ValueError(f"File '{filepath}' not found.")
         sample_rate, data = wavfile.read(filepath)
+        spectrum, freqs, t, im = plt.specgram(data, Fs=sample_rate, NFFT=1024, cmap=plt.get_cmap('jet'))
+        db_data = frequency_check(freqs, spectrum)
+
+        # Find max value and max value index
+        max_index = np.argmax(db_data)
+        max_value = db_data[max_index]
+
+        # Slice max value array -5
+        sliced_array = db_data[:max_index]
+        max_minus_5_value = max_value - 5
+        sliced_array = db_data[max_index:]
+
+        max_minus_5_value = max_value - 5
+        max_minus_5_value = find_nearest_value(sliced_array, max_minus_5_value)
+        max_minus_5_index = np.where(db_data == max_minus_5_value)
+        max_minus_5_index = np.where(db_data == max_minus_5_value)[0]
+        if len(max_minus_5_index) == 0:
+            raise ValueError("No values found for -5dB threshold.")
+
+        # Slice max value array -25
+        max_minus_25_value = max_value - 25
+        max_minus_25_value = find_nearest_value(sliced_array, max_minus_25_value)
+        max_minus_25_index = np.where(db_data == max_minus_25_value)
+        max_minus_25_index = np.where(db_data == max_minus_25_value)[0]
+        if len(max_minus_25_index) == 0:
+            raise ValueError("No values found for -5dB threshold.")
+
+        # Find RT20
+        rt20 = (t[max_minus_5_index[0]] - t[max_minus_25_index[0]])  # Access first element of the index array
+        rt60 = rt20 * 3
+        return round(abs(rt60), 3)-0.5
+
+    except ValueError as e:
+        # Handle file and directory-related errors
+        print(f"Error during processing: {e}")
+        return None
     except Exception as e:
-        raise IOError(f"Failed to read audio file '{filepath}': {e}")
+        # Handle unexpected exceptions (e.g., file I/O issues)
+        print(f"An unexpected error occurred: {e}")
+        return None
 
-    # Normalize data to float32 with safety checks
-    epsilon = 1e-10
-    max_val = np.max(np.abs(data))
-    if max_val > epsilon:
-        data = data.astype(np.float32) / max_val
+def find_target_frequency(freqs):
+    for x in freqs:
+        if x > set_target_frequency(input_cycle):
+            break
+    return x
+
+input_cycle = 0
+def cycle_frequency_input():
+    global input_cycle
+    if 3 > input_cycle > 0:
+        input_cycle+= 1
     else:
-        data = np.zeros_like(data)
+        input_cycle = 1
 
-    # Default frequency ranges
-    if freq_ranges is None:
-        freq_ranges = {
-            'low': (20, 250),
-            'mid': (250, 2000),
-            'high': (2000, 20000)
-        }
+def frequency_check(freqs,spectrum):
 
-    rt60_values = {}
+    target_frequency = find_target_frequency(freqs)
+    index_of_frequency = np.where(freqs == target_frequency)[0][0]
+    data_for_frequency = spectrum[index_of_frequency]
+    db_data_fun = 10 * np.log10(data_for_frequency)
+    return db_data_fun
 
-    for key, (lowcut, highcut) in freq_ranges.items():
-        filtered_data = bandpass_filter(data, sample_rate, lowcut, highcut)
-        rt60 = calculate_rt60(filtered_data, sample_rate)
-        rt60_values[key] = rt60
+def set_target_frequency(cycle):
+    global target_frequency
+    if cycle == 1:
+        target_frequency = 250
+        return 250
+    elif cycle == 2:
+        target_frequency = 1000
+        return 1000
+    elif cycle == 3:
+        target_frequency = 1750
+        return 1750
+    else:
+        return 9
 
-    return rt60_values
+def find_nearest_value(array, value):
+    idx = (np.abs(array - value)).argmin()
+    return array[idx]
 
-def get_frequency_with_greatest_amplitude(filepath):
-    """
-    Identify the frequency with the greatest amplitude in the audio file.
+"""Data Visualization"""
+def plot_intensity(filepath, output_dir):
+    """Generate and save an Intensity Graph (Spectrogram) using SciPy."""
+    sample_rate, data = read_audio(filepath)
 
-    Parameters:
-        filepath (str): Path to the WAV audio file.
+    # Compute the spectrogram using SciPy
+    frequencies, times, Sxx = spectrogram(data, fs=sample_rate, nperseg=1024, noverlap=512)
 
-    Returns:
-        float: Frequency in Hz with the greatest amplitude.
-    """
-    sample_rate, data = wavfile.read(filepath)
+    # Convert power to dB scale, avoiding log of zero by adding a small offset
+    Sxx_db = 10 * np.log10(Sxx + 1e-10)
 
-    # If stereo, take one channel
-    if len(data.shape) > 1:
-        data = data[:, 0]
+    plt.figure(figsize=FIGURE_SIZE)
+    plt.pcolormesh(times, frequencies, Sxx_db, shading='gouraud', cmap='nipy_spectral')
+    plt.colorbar(label='Intensity (dB)')
+    plt.title('Frequency Graph (SciPy Spectrogram)')
+    plt.xlabel('Time (seconds)')
+    plt.ylabel('Frequency (Hz)')
 
-    # Apply FFT with windowing to reduce spectral leakage
-    window = np.hanning(len(data))
-    data_windowed = data * window
-    yf = fftpack.fft(data_windowed)
-    xf = fftpack.fftfreq(len(data), 1 / sample_rate)
-
-    # Take only the positive frequencies
-    idxs = np.where(xf >= 0)
-    xf = xf[idxs]
-    yf = np.abs(yf[idxs])
-
-    # Find the frequency with the highest amplitude
-    idx = np.argmax(yf)
-    freq = xf[idx]
-
-    return freq
+    plot_path = os.path.join(output_dir, "intensity_graph_scipy.png")
+    plt.savefig(plot_path)
+    plt.close()
+    return plot_path
 
 def plot_waveform(filepath, output_dir):
-    """
-    Plot the waveform of the audio file and save the figure.
+    """Generate and save a Waveform Graph."""
+    sample_rate, data = read_audio(filepath)
+    time = np.linspace(0, len(data) / sample_rate, num=len(data))
 
-    Parameters:
-        filepath (str): Path to the WAV audio file.
-        output_dir (str): Directory to save the plot.
-
-    Returns:
-        str: Path to the saved plot image.
-    """
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
-    sample_rate, data = wavfile.read(filepath)
-    times = np.arange(len(data)) / float(sample_rate)
-
-    plt.figure(figsize=(10, 4))
-    plt.plot(times, data)
-    plt.title('Waveform')
-    plt.xlabel('Time (s)')
+    plt.figure(figsize=FIGURE_SIZE)
+    plt.plot(time, data, linewidth=1)
+    plt.title('Waveform Graph')
+    plt.xlabel('Time (seconds)')
     plt.ylabel('Amplitude')
-    plt.tight_layout()
 
-    plot_path = os.path.join(output_dir, 'waveform.png')
+    plot_path = os.path.join(output_dir, "waveform_graph.png")
     plt.savefig(plot_path)
     plt.close()
-
     return plot_path
 
-def plot_rt60_values(rt60_values, output_dir):
-    """
-    Plot the RT60 values for different frequency ranges.
+def plot_individual_rt60(filepath, output_dir, freq_ranges):
+    """Generate Individual RT60 graphs for Low, Medium, and High Frequencies with consistent y-axis range."""
+    sample_rate, data = read_audio(filepath)
+    plot_paths = {}
+    labels = ['Low', 'Mid', 'High']
+    colors = ['blue', 'green', 'red']  # Specify colors for each range
+    all_energy_db = []
 
-    Parameters:
-        rt60_values (dict): RT60 values with keys 'low', 'mid', 'high'.
-        output_dir (str): Directory to save the plot.
+    # Step 1: Calculate energy_db for all frequency ranges to determine global min and max
+    for freq_range in freq_ranges:
+        _, energy_db = process_frequency_range(data, sample_rate, freq_range)
+        all_energy_db.extend(energy_db)  # Collect all energy values
 
-    Returns:
-        str: Path to the saved plot image.
-    """
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+    global_min = min(all_energy_db) - 2
+    global_max = max(all_energy_db) + 2
 
-    frequency_ranges = list(rt60_values.keys())
-    rt60_list = [rt60_values[fr] for fr in frequency_ranges]
+    # Step 2: Generate plots with consistent y-axis range
+    for freq_range, label, color in zip(freq_ranges, labels, colors):
+        time, energy_db = process_frequency_range(data, sample_rate, freq_range)
 
-    plt.figure(figsize=(6, 4))
-    plt.bar(frequency_ranges, rt60_list, color='skyblue')
-    plt.title('RT60 Values')
-    plt.xlabel('Frequency Range')
-    plt.ylabel('RT60 (s)')
-    plt.tight_layout()
+        plt.figure(figsize=FIGURE_SIZE)
+        plt.plot(time, energy_db, linewidth=1, color=color, label=f'{label} Frequency')  # Add label for legend
+        plt.title(f'{label} RT60 Graph')
+        plt.xlabel('Time (seconds)')
+        plt.ylabel('Power (dB)')
 
-    plot_path = os.path.join(output_dir, 'rt60_values.png')
+        # Set consistent y-axis limits
+        plt.ylim(global_min, global_max)
+
+        # Add legend
+        plt.legend(loc='best')  # Automatically place the legend in the best position
+
+        plot_path = os.path.join(output_dir, f"{label.lower()}_rt60_graph.png")
+        plt.savefig(plot_path)
+        plt.close()
+        plot_paths[label.lower()] = plot_path
+
+    return plot_paths
+
+def plot_combined_rt60(filepath, output_dir, freq_ranges):
+    """Generate Combined RT60 graphs for Low, Medium, and High Frequencies with consistent y-axis range."""
+    sample_rate, data = read_audio(filepath)
+    labels = ['Low', 'Mid', 'High']
+    colors = ['blue', 'green', 'red']
+    all_energy_db = []
+
+    # Step 1: Calculate energy_db for all frequency ranges to determine global min and max
+    for freq_range in freq_ranges:
+        _, energy_db = process_frequency_range(data, sample_rate, freq_range)
+        all_energy_db.extend(energy_db)  # Collect all energy values
+
+    global_min = min(all_energy_db) - 2
+    global_max = max(all_energy_db) + 2
+
+    # Step 2: Plot all frequency ranges with consistent y-axis limits
+    plt.figure(figsize=FIGURE_SIZE)
+
+    for freq_range, label, color in zip(freq_ranges, labels, colors):
+        time, energy_db = process_frequency_range(data, sample_rate, freq_range)
+        plt.plot(time, energy_db, label=f'{label} Frequency', linewidth=1, color=color)
+
+    plt.title('Combined RT60 Graph')
+    plt.xlabel('Time (seconds)')
+    plt.ylabel('Power (dB)')
+    plt.ylim(global_min, global_max)  # Set consistent y-axis limits
+    plt.legend()
+
+    plot_path = os.path.join(output_dir, "combined_rt60_graph.png")
     plt.savefig(plot_path)
     plt.close()
-
-    return plot_path
-
-def plot_intensity_spectrum(filepath, output_dir):
-    """
-    Plot the intensity spectrum of the audio file.
-
-    Parameters:
-        filepath (str): Path to the WAV audio file.
-        output_dir (str): Directory to save the plot.
-
-    Returns:
-        str: Path to the saved plot image.
-    """
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
-    sample_rate, data = wavfile.read(filepath)
-
-    # Normalize data
-    epsilon = 1e-10
-    max_val = np.max(np.abs(data))
-    if max_val > epsilon:
-        data = data.astype(np.float32) / max_val
-    else:
-        data = np.zeros_like(data)
-
-    num_samples = len(data)
-    window = np.hanning(num_samples)
-    data_windowed = data * window
-    yf = fftpack.fft(data_windowed)
-    xf = fftpack.fftfreq(num_samples, 1 / sample_rate)
-
-    # Take only the positive frequencies
-    idxs = np.where(xf >= 0)
-    xf = xf[idxs]
-    yf = np.abs(yf[idxs])
-
-    plt.figure(figsize=(10, 4))
-    plt.plot(xf, yf)
-    plt.title('Intensity Spectrum')
-    plt.xlabel('Frequency (Hz)')
-    plt.ylabel('Amplitude')
-    plt.tight_layout()
-
-    plot_path = os.path.join(output_dir, 'intensity_spectrum.png')
-    plt.savefig(plot_path)
-    plt.close()
-
     return plot_path
