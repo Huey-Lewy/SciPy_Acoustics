@@ -169,6 +169,92 @@ def calculate_rt60(data, sample_rate, freq_range, decay_points=None):
 
     return rt60
 
+def calculate_rt60_difference(filepath):
+    try:
+        if not os.path.exists(filepath):
+            raise ValueError(f"File '{filepath}' not found.")
+        sample_rate, data = wavfile.read(filepath)
+        spectrum, freqs, t, im = plt.specgram(data, Fs=sample_rate, NFFT=1024, cmap=plt.get_cmap('jet'))
+        db_data = frequency_check(freqs, spectrum)
+
+        # Find max value and max value index
+        max_index = np.argmax(db_data)
+        max_value = db_data[max_index]
+
+        # Slice max value array -5
+        sliced_array = db_data[:max_index]
+        max_minus_5_value = max_value - 5
+        sliced_array = db_data[max_index:]
+
+        max_minus_5_value = max_value - 5
+        max_minus_5_value = find_nearest_value(sliced_array, max_minus_5_value)
+        max_minus_5_index = np.where(db_data == max_minus_5_value)
+        max_minus_5_index = np.where(db_data == max_minus_5_value)[0]
+        if len(max_minus_5_index) == 0:
+            raise ValueError("No values found for -5dB threshold.")
+
+        # Slice max value array -25
+        max_minus_25_value = max_value - 25
+        max_minus_25_value = find_nearest_value(sliced_array, max_minus_25_value)
+        max_minus_25_index = np.where(db_data == max_minus_25_value)
+        max_minus_25_index = np.where(db_data == max_minus_25_value)[0]
+        if len(max_minus_25_index) == 0:
+            raise ValueError("No values found for -5dB threshold.")
+
+        # Find RT20
+        rt20 = (t[max_minus_5_index[0]] - t[max_minus_25_index[0]])  # Access first element of the index array
+        rt60 = rt20 * 3
+        return round(abs(rt60), 3)-0.5
+
+    except ValueError as e:
+        # Handle file and directory-related errors
+        print(f"Error during processing: {e}")
+        return None
+    except Exception as e:
+        # Handle unexpected exceptions (e.g., file I/O issues)
+        print(f"An unexpected error occurred: {e}")
+        return None
+
+def find_target_frequency(freqs):
+    for x in freqs:
+        if x > set_target_frequency(input_cycle):
+            break
+    return x
+
+input_cycle = 0
+def cycle_frequency_input():
+    global input_cycle
+    if 3 > input_cycle > 0:
+        input_cycle+= 1
+    else:
+        input_cycle = 1
+
+def frequency_check(freqs,spectrum):
+
+    target_frequency = find_target_frequency(freqs)
+    index_of_frequency = np.where(freqs == target_frequency)[0][0]
+    data_for_frequency = spectrum[index_of_frequency]
+    db_data_fun = 10 * np.log10(data_for_frequency)
+    return db_data_fun
+
+def set_target_frequency(cycle):
+    global target_frequency
+    if cycle == 1:
+        target_frequency = 250
+        return 250
+    elif cycle == 2:
+        target_frequency = 1000
+        return 1000
+    elif cycle == 3:
+        target_frequency = 1750
+        return 1750
+    else:
+        return 9
+
+def find_nearest_value(array, value):
+    idx = (np.abs(array - value)).argmin()
+    return array[idx]
+
 """Data Visualization"""
 def plot_intensity(filepath, output_dir):
     """Generate and save an Intensity Graph (Spectrogram) using SciPy."""
@@ -213,6 +299,7 @@ def plot_individual_rt60(filepath, output_dir, freq_ranges):
     sample_rate, data = read_audio(filepath)
     plot_paths = {}
     labels = ['Low', 'Mid', 'High']
+    colors = ['blue', 'green', 'red']  # Specify colors for each range
     all_energy_db = []
 
     # Step 1: Calculate energy_db for all frequency ranges to determine global min and max
@@ -224,17 +311,20 @@ def plot_individual_rt60(filepath, output_dir, freq_ranges):
     global_max = max(all_energy_db) + 2
 
     # Step 2: Generate plots with consistent y-axis range
-    for freq_range, label in zip(freq_ranges, labels):
+    for freq_range, label, color in zip(freq_ranges, labels, colors):
         time, energy_db = process_frequency_range(data, sample_rate, freq_range)
 
         plt.figure(figsize=FIGURE_SIZE)
-        plt.plot(time, energy_db, linewidth=1)
+        plt.plot(time, energy_db, linewidth=1, color=color, label=f'{label} Frequency')  # Add label for legend
         plt.title(f'{label} RT60 Graph')
         plt.xlabel('Time (seconds)')
         plt.ylabel('Power (dB)')
 
         # Set consistent y-axis limits
         plt.ylim(global_min, global_max)
+
+        # Add legend
+        plt.legend(loc='best')  # Automatically place the legend in the best position
 
         plot_path = os.path.join(output_dir, f"{label.lower()}_rt60_graph.png")
         plt.savefig(plot_path)

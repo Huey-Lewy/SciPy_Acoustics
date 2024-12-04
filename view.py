@@ -67,17 +67,19 @@ class AudioGUI:
             self.plot_paths = self.analysis_results.get('plots', {})
 
             # Display analysis results
-            rt60 = self.analysis_results['rt60_values']
             peak_freq = self.analysis_results['peak_frequency']
-            self.info.config(
-                text=(
-                    f"Duration: {duration:.3f} s\n"
-                    f"RT60 Low: {rt60['low']:.3f} s\n"
-                    f"RT60 Mid: {rt60['mid']:.3f} s\n"
-                    f"RT60 High: {rt60['high']:.3f} s\n"
-                    f"Peak Freq: {peak_freq:.3f} Hz"
-                )
-            )
+            time_difference = self.analysis_results['time_difference']
+            self.info.config(text=(f"Duration: {duration:.3f} s\n"
+                                   f"Peak Freq: {peak_freq:.3f} Hz\n"
+                                   f"Difference: {time_difference:.3f} s"))
+
+            # Save analysis info to a text file
+            info_file_path = os.path.join(output_subdir, "analysis_results.txt")
+            with open(info_file_path, "w") as info_file:
+                info_file.write(f"Duration: {duration:.3f} s\n")
+                info_file.write(f"Peak Freq: {peak_freq:.3f} Hz\n")
+                info_file.write(f"Difference: {time_difference:.3f} s\n")
+            print(f"Analysis results saved to {info_file_path}")
 
             messagebox.showinfo("Success", "Analysis complete. You can now view the graphs.")
 

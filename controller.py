@@ -9,7 +9,8 @@ import os
 import numpy as np
 from model import (
     check_file_format, convert_mp3_to_wav, ensure_single_channel, strip_metadata, get_audio_length,
-    read_audio, calculate_rt60, plot_intensity, plot_waveform, plot_individual_rt60, plot_combined_rt60
+    read_audio, calculate_rt60_difference,
+    plot_intensity, plot_waveform, plot_individual_rt60, plot_combined_rt60
 )
 
 """Data Cleaning & Processing"""
@@ -90,13 +91,6 @@ def analyze_audio(filepath, output_dir, timestamp):
             'high': (2000, 20000)
         }
 
-        # Calculate RT60 values for each frequency range
-        rt60_values = {}
-        for label, freq_range in freq_ranges.items():
-            rt60 = calculate_rt60(data, sample_rate, freq_range)
-            rt60_values[label] = rt60
-            print(f"RT60 for {label} frequencies ({freq_range[0]}-{freq_range[1]} Hz): {rt60:.2f} seconds")
-
         # Perform FFT to find the frequency with the greatest amplitude
         fft_data = np.fft.fft(data)
         fft_freq = np.fft.fftfreq(len(data), d=1/sample_rate)
@@ -105,21 +99,18 @@ def analyze_audio(filepath, output_dir, timestamp):
         positive_freqs = fft_freq[:len(fft_freq) // 2]
         positive_fft_data = np.abs(fft_data[:len(fft_data) // 2])
 
-        # Find the peak frequency
+        # Find the peak frequency and time difference
         peak_idx = np.argmax(positive_fft_data)
         peak_frequency = positive_freqs[peak_idx]
+        rt60_difference = calculate_rt60_difference(filepath)
         print(f"Peak frequency: {peak_frequency:.2f} Hz")
 
-        # Create output subdirectory
-        output_subdir = os.path.join(output_dir, timestamp)
-        os.makedirs(output_subdir, exist_ok=True)
-
-        # Generate plots for analysis
-        plot_paths = generate_plots(filepath, output_subdir, freq_ranges)
+        # Generate plots for analysis (no extra subdirectory creation here)
+        plot_paths = generate_plots(filepath, output_dir, freq_ranges)
 
         # Prepare analysis results
         results = {
-            'rt60_values': rt60_values,
+            'time_difference': rt60_difference,
             'peak_frequency': peak_frequency,
             'plots': plot_paths
         }
