@@ -10,10 +10,11 @@ from pydub import AudioSegment
 import numpy as np
 from scipy.io import wavfile
 from scipy.signal import butter, lfilter
+from scipy.signal import spectrogram
 import matplotlib.pyplot as plt
 
 # Global parameters
-FIGURE_SIZE = (10, 6)   # Figure Size
+FIGURE_SIZE = (8, 4)   # Figure Size
 
 """Data Cleaning & Processing"""
 def check_file_format(filepath):
@@ -124,7 +125,8 @@ def filter_and_calculate_energy(data, sample_rate, freq_range):
     energy = filtered_data ** 2
 
     # Convert energy to decibels (logarithmic scale)
-    energy_db = 10 * np.log10(energy + 1e-10)  # Add small value to avoid log(0)
+    energy[energy <= 1e-10] = 1e-10  # Replace zeros or near-zeros with the threshold
+    energy_db = 10 * np.log10(energy)
 
     return energy_db
 
@@ -187,17 +189,23 @@ def process_frequency_range(data, sample_rate, freq_range):
 
 """Data Visualization"""
 def plot_intensity(filepath, output_dir):
-    """Generate and save an Intensity Graph (Spectrogram)."""
+    """Generate and save an Intensity Graph (Spectrogram) using SciPy."""
     sample_rate, data = read_audio(filepath)
 
+    # Compute the spectrogram using SciPy
+    frequencies, times, Sxx = spectrogram(data, fs=sample_rate, nperseg=1024, noverlap=512)
+
+    # Convert power to dB scale, avoiding log of zero by adding a small offset
+    Sxx_db = 10 * np.log10(Sxx + 1e-10)
+
     plt.figure(figsize=FIGURE_SIZE)
-    plt.specgram(data, Fs=sample_rate, NFFT=1024, noverlap=512, cmap='viridis')
+    plt.pcolormesh(times, frequencies, Sxx_db, shading='gouraud', cmap='nipy_spectral')
     plt.colorbar(label='Intensity (dB)')
-    plt.title('Frequency Graph')
+    plt.title('Frequency Graph (SciPy Spectrogram)')
     plt.xlabel('Time (seconds)')
     plt.ylabel('Frequency (Hz)')
 
-    plot_path = os.path.join(output_dir, "intensity_graph.png")
+    plot_path = os.path.join(output_dir, "intensity_graph_scipy.png")
     plt.savefig(plot_path)
     plt.close()
     return plot_path

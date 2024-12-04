@@ -92,9 +92,15 @@ def analyze_audio(filepath, output_dir, timestamp):
 
         # Calculate RT60 values for each frequency range
         rt60_values = {}
+        min_rt60_threshold = 0.1  # Minimum realistic RT60 value in seconds
         for label, freq_range in freq_ranges.items():
-            rt60 = calculate_rt60(data, sample_rate, freq_range)
-            rt60_values[label] = rt60
+            rt60 = calculate_rt60(data, sample_rate, freq_range, rt60_min_threshold=min_rt60_threshold)
+            print(f"Debug: Calculated RT60 for {label} range {freq_range}: {rt60}")
+            if rt60 is not None:
+                rt60_values[label] = rt60
+            else:
+                rt60_values[label] = min_rt60_threshold  # Default to minimum threshold
+            print(f"Debug: RT60 assigned for {label}: {rt60_values[label]}")
 
         # Find the frequency with the greatest amplitude
         # Compute the Fourier Transform of the audio signal

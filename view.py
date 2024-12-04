@@ -9,26 +9,26 @@ Authors:
 import os
 import tkinter as tk
 from tkinter import filedialog, messagebox
-from controller import process_audio_file
-
+from controller import process_audio_file, analyze_audio, generate_plots
 
 class AudioGUI:
     def __init__(self, root):
         self.audiofile = None           # Selected audio file path
         self.analysis_results = None    # Analysis results dictionary
-        self.timestamp = None           # Timestamp for analysis session
-        self.output_subdir = None       # Output subdirectory path
-        self.canvas = None      # Main canvas
-        self.plot_frame = None  # Frame to display plots
-        self.info = None        # Information label
-        self.fn_label = None    # File name label
-        self.af_button = None   # Analyze File button
-        self.button_font = ("Arial Bold", 12)   # Global font for buttons
-        self.master = root                      # Main Tkinter window
-        self.setup_gui()                        # Initialize GUI components
+        self.plot_paths = None          # Paths to generated plots
+        self.canvas = None
+        self.af_button = None
+        self.fn_label = None
+        self.plot_frame = None
+        self.info = None
+        self.current_rt60_plot = 0      # Index to cycle through RT60 plots
+        self.freq_labels = ['low', 'mid', 'high']  # Labels for RT60 plots
+        self.button_font = ("Arial Bold", 12)      # Global font for buttons
+        self.master = root                           # Main Tkinter window
+        self.setup_gui()                             # Initialize GUI components
 
     def browse_files(self):
-        """Opens a file dialog to select an audio file."""
+        """Open a file dialog to select an audio file."""
         self.audiofile = filedialog.askopenfilename(
             initialdir="/",
             title="Select a File",
@@ -38,83 +38,93 @@ class AudioGUI:
             self.fn_label.config(text=f"File Opened: {os.path.basename(self.audiofile)}")
 
     def analyze_file(self):
-        """Processes and analyzes the selected audio file."""
+        """Process and analyze the selected file."""
         if not self.audiofile:
-            self.info.config(text="No file selected.", font=self.button_font)
+            messagebox.showerror("Error", "No file selected. Please select a file to analyze.")
             return
 
         try:
             # Define output directory
-            output_dir = "data/outputs"
+            output_dir = "output_files"
+            os.makedirs(output_dir, exist_ok=True)
 
-            # Generate and store the timestamp
+            # Generate a timestamp for this analysis session
             import datetime
-            self.timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            self.output_subdir = os.path.join(output_dir, self.timestamp)
-
-            # Ensure the output subdirectory exists
-            os.makedirs(self.output_subdir, exist_ok=True)
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_subdir = os.path.join(output_dir, timestamp)
+            os.makedirs(output_subdir, exist_ok=True)
 
             # Process the audio file
-            processed_file, file_length = process_audio_file(self.audiofile, self.output_subdir)
-            if processed_file is None:
-                self.info.config(text="Error processing the file.", font=self.button_font)
+            processed_file, duration = process_audio_file(self.audiofile, output_subdir)
+            if not processed_file:
+                messagebox.showerror("Error", "File processing failed.")
                 return
 
             # Analyze the processed file
-            # self.analysis_results, _ = analyze_audio(processed_file, output_dir, self.timestamp)
-            if not self.analysis_results:
-                self.info.config(text="Error analyzing the file.", font=self.button_font)
-                return
+            self.analysis_results = analyze_audio(processed_file, output_subdir, timestamp)
 
-            # Update the information label with results
-            rt60_values = self.analysis_results['rt60_values']
-            peak_frequency = self.analysis_results['peak_frequency']
-            self.info.config(text=(f"File Length: {file_length:.2f}s\n"
-                                   f"Peak Freq: {peak_frequency:.2f} Hz\n"
-                                   f"RT60 High: {rt60_values['high']:.2f}s\n"
-                                   f"RT60 Mid: {rt60_values['mid']:.2f}s\n"
-                                   f"RT60 Low: {rt60_values['low']:.2f}s"), font=self.button_font)
+            # Generate plots
+            freq_ranges = [
+                (20, 250),     # Low
+                (250, 2000),   # Mid
+                (2000, 20000)  # High
+            ]
+            self.plot_paths = generate_plots(processed_file, output_subdir, freq_ranges)
+
+            # Display analysis results
+            rt60 = self.analysis_results['rt60_values']
+            peak_freq = self.analysis_results['peak_frequency']
+            self.info.config(
+                text=(
+                    f"Duration: {duration:.3f} s\n"
+                    f"RT60 Low: {rt60['low']:.3f} s\n"
+                    f"RT60 Mid: {rt60['mid']:.3f} s\n"
+                    f"RT60 High: {rt60['high']:.3f} s\n"
+                    f"Peak Freq: {peak_freq:.3f} Hz"
+                )
+            )
+
+            messagebox.showinfo("Success", "Analysis complete. You can now view the graphs.")
 
         except Exception as e:
-            messagebox.showerror("Error", f"An unexpected error occurred: {str(e)}")
+            messagebox.showerror("Error", f"An error occurred: {e}")
 
     def display_intensity_graph(self):
         """Displays the intensity (spectrogram) graph."""
-        # Placeholder: Will require updates in controller/model.py
-        if not self.analysis_results:
-            messagebox.showinfo("Info", "No analysis results available. Analyze a file first.")
+        if not self.plot_paths:
+            messagebox.showinfo("Info", "No plots available. Analyze a file first.")
             return
-
-        # Placeholder: Intensity Graph
-        # self.show("Intensity Graph")
+        plot_path = self.plot_paths['intensity']
+        self.show_image(plot_path)
 
     def display_waveform_graph(self):
         """Displays the waveform graph."""
-        if not self.analysis_results:
-            messagebox.showinfo("Info", "No analysis results available. Analyze a file first.")
+        if not self.plot_paths:
+            messagebox.showinfo("Info", "No plots available. Analyze a file first.")
             return
-
-        # Placeholder: Waveform Graph
-        # self.show("Waveform Graph")
+        plot_path = self.plot_paths['waveform']
+        self.show_image(plot_path)
 
     def display_cycle_rt60_graphs(self):
         """Cycles through low, mid, and high RT60 graphs."""
-        if not self.analysis_results:
-            messagebox.showinfo("Info", "No analysis results available. Analyze a file first.")
+        if not self.plot_paths:
+            messagebox.showinfo("Info", "No plots available. Analyze a file first.")
             return
 
-        # Placeholder: Logic to cycle through RT60 graphs
-        # self.show("Cycle RT60 Graphs")
+        label = self.freq_labels[self.current_rt60_plot]
+        plot_path = self.plot_paths['individual_rt60'][label]
+        self.show_image(plot_path)
+
+        # Update for next cycle
+        self.current_rt60_plot = (self.current_rt60_plot + 1) % len(self.freq_labels)
 
     def display_combined_rt60_graphs(self):
         """Displays the combined RT60 graph."""
-        if not self.analysis_results:
-            messagebox.showinfo("Info", "No analysis results available. Analyze a file first.")
+        if not self.plot_paths:
+            messagebox.showinfo("Info", "No plots available. Analyze a file first.")
             return
-
-        # Placeholder: Combined RT60 graph logic
-        # self.show("Combined RT60 Graphs")
+        plot_path = self.plot_paths['combined_rt60']
+        self.show_image(plot_path)
 
     def show_image(self, plot_path):
         """Displays an image in the GUI."""
@@ -127,10 +137,16 @@ class AudioGUI:
             widget.destroy()
 
         try:
+            # Load the image
             photo = tk.PhotoImage(file=plot_path)
-            img_label = tk.Label(self.plot_frame, image=photo)
-            img_label.image = photo  # Keep a reference
-            img_label.pack()
+
+            # Create the label to hold the image
+            img_label = tk.Label(self.plot_frame, image=photo, bg="white")
+            img_label.image = photo  # Keep a reference to avoid garbage collection
+
+            # Use place to center the image in the frame
+            img_label.place(relx=0.53, rely=0.47, anchor="center")
+
         except Exception as e:
             messagebox.showerror("Error", f"Unable to display the image: {str(e)}")
 
@@ -152,8 +168,8 @@ class AudioGUI:
         self.af_button.place(relx=0.79, rely=0.1, relwidth=0.2, relheight=0.8)
 
         # File name label with dynamic text shrinking
-        self.fn_label = tk.Label(file_frame,text=" File Opened: None",anchor="w",bg="#F5F5F5",
-                                 font=self.button_font,wraplength=400)
+        self.fn_label = tk.Label(file_frame, text="File Opened: None", anchor="w", bg="#F5F5F5",
+                                 font=self.button_font, wraplength=400)
         self.fn_label.place(relx=0.23, rely=0.1, relwidth=0.54, relheight=0.8)
 
         # Plot frame to display images
@@ -166,13 +182,13 @@ class AudioGUI:
 
         # Visualization buttons
         intensity_button = tk.Button(ui, text="Intensity Graph", font=self.button_font,
-                                      command=self.display_intensity_graph)
+                                     command=self.display_intensity_graph)
         waveform_button = tk.Button(ui, text="Waveform Graph", font=self.button_font,
-                                     command=self.display_waveform_graph)
+                                    command=self.display_waveform_graph)
         cycle_rt60_button = tk.Button(ui, text="Cycle RT60 Graphs", font=self.button_font,
-                                       command=self.display_cycle_rt60_graphs)
-        combined_rt60_button = tk.Button(ui, text="Combine RT60 Graphs", font=self.button_font,
-                                          command=self.display_combined_rt60_graphs)
+                                      command=self.display_cycle_rt60_graphs)
+        combined_rt60_button = tk.Button(ui, text="Combined RT60 Graph", font=self.button_font,
+                                         command=self.display_combined_rt60_graphs)
 
         intensity_button.place(relx=0.03, rely=0.1, relwidth=0.27, relheight=0.35)
         waveform_button.place(relx=0.33, rely=0.1, relwidth=0.27, relheight=0.35)
@@ -187,7 +203,6 @@ class AudioGUI:
         self.info = tk.Label(info_frame, text="Select a file to begin processing.", font=self.button_font,
                              wraplength=200, justify="center", bg="white")
         self.info.place(relwidth=1, relheight=1)
-
 
 if __name__ == "__main__":
     master = tk.Tk()
