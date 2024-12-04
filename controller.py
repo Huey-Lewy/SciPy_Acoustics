@@ -93,7 +93,7 @@ def analyze_audio(filepath, output_dir, timestamp):
         # Calculate RT60 values for each frequency range
         rt60_values = {}
         for label, freq_range in freq_ranges.items():
-            rt60 = calculate_rt60(data, sample_rate, freq_range)
+            rt60 = calculate_rt60(filepath)
             rt60_values[label] = rt60
             print(f"RT60 for {label} frequencies ({freq_range[0]}-{freq_range[1]} Hz): {rt60:.2f} seconds")
 

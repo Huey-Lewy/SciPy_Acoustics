@@ -129,45 +129,92 @@ def process_frequency_range(data, sample_rate, freq_range, epsilon=1e-10):
 
     return time, energy_db
 
-def calculate_rt60(data, sample_rate, freq_range, decay_points=None):
-    """
-    Robust RT60 calculation with multiple decay range options.
+def find_target_frequency(freqs):
+    for x in freqs:
+        if x > set_target_frequency(input_cycle):
+            break
+    return x
 
-    Args:
-        data (np.ndarray): Audio data
-        sample_rate (int): Audio sampling rate
-        freq_range (tuple): Target frequency range
-        decay_points (tuple, optional): Custom decay start and end points in dB
+input_cycle = 0
+def cycle_frequency_input():
+    global input_cycle
+    if 3 > input_cycle > 0:
+        input_cycle+= 1
+    else:
+        input_cycle = 1
 
-    Returns:
-        float: Estimated RT60 value
-    """
-    if decay_points is None:
-        decay_points = (-5, -25)  # Default to -5dB and -25dB
+def frequency_check(freqs,spectrum):
 
-    time, energy_db = process_frequency_range(data, sample_rate, freq_range)
+    target_frequency = find_target_frequency(freqs)
+    index_of_frequency = np.where(freqs == target_frequency)[0][0]
+    data_for_frequency = spectrum[index_of_frequency]
+    db_data_fun = 10 * np.log10(data_for_frequency)
+    return db_data_fun
 
-    # Find the peak energy level and corresponding index
-    max_db = np.max(energy_db)
-    max_idx = np.argmax(energy_db)
+def set_target_frequency(cycle):
+    global target_frequency
+    if cycle == 1:
+        target_frequency = 250
+        return 250
+    elif cycle == 2:
+        target_frequency = 1000
+        return 1000
+    elif cycle == 3:
+        target_frequency = 1750
+        return 1750
+    else:
+        return 9
 
-    # Calculate decay thresholds
-    start_threshold = max_db + decay_points[0]
-    end_threshold = max_db + decay_points[1]
 
-    # Locate time indices for the thresholds
-    start_idx = np.where(energy_db[max_idx:] < start_threshold)[0][0] + max_idx
-    end_idx = np.where(energy_db[max_idx:] < end_threshold)[0][0] + max_idx
 
-    # Convert indices to times
-    t_start = start_idx / sample_rate
-    t_end = end_idx / sample_rate
+def find_nearest_value(array, value):
+    idx = (np.abs(array - value)).argmin()
+    return array[idx]
+def calculate_rt60(filepath):
+    try:
+        if not os.path.exists(filepath):
+            raise ValueError(f"File '{filepath}' not found.")
+        sample_rate, data = wavfile.read(filepath)
+        spectrum, freqs, t, im = plt.specgram(data, Fs=sample_rate, NFFT=1024, cmap=plt.get_cmap('jet'))
+        db_data = frequency_check(freqs, spectrum)
 
-    # Calculate RT60 from RT20 (standard approximation)
-    rt20 = t_end - t_start
-    rt60 = rt20 * 3
+        # Find max value and max value index
+        max_index = np.argmax(db_data)
+        max_value = db_data[max_index]
 
-    return rt60
+        # Slice max value array -5
+        sliced_array = db_data[:max_index]
+        max_minus_5_value = max_value - 5
+        sliced_array = db_data[max_index:]
+
+        max_minus_5_value = max_value - 5
+        max_minus_5_value = find_nearest_value(sliced_array, max_minus_5_value)
+        max_minus_5_index = np.where(db_data == max_minus_5_value)
+        max_minus_5_index = np.where(db_data == max_minus_5_value)[0]
+        if len(max_minus_5_index) == 0:
+            raise ValueError("No values found for -5dB threshold.")
+
+        # Slice max value array -25
+        max_minus_25_value = max_value - 25
+        max_minus_25_value = find_nearest_value(sliced_array, max_minus_25_value)
+        max_minus_25_index = np.where(db_data == max_minus_25_value)
+        max_minus_25_index = np.where(db_data == max_minus_25_value)[0]
+        if len(max_minus_25_index) == 0:
+            raise ValueError("No values found for -5dB threshold.")
+
+        # Find RT20
+        rt20 = (t[max_minus_5_index] - t[max_minus_25_index])[0]
+        rt20 = (t[max_minus_5_index[0]] - t[max_minus_25_index[0]])  # Access first element of the index array
+        rt60 = rt20 * 3
+        return rt60
+    except ValueError as e:
+        # Handle file and directory-related errors
+        print(f"Error during processing: {e}")
+        return None
+    except Exception as e:
+        # Handle unexpected exceptions (e.g., file I/O issues)
+        print(f"An unexpected error occurred: {e}")
+        return None
 
 """Data Visualization"""
 def plot_intensity(filepath, output_dir):
