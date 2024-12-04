@@ -93,35 +93,81 @@ def read_audio(filepath):
         tuple: Sample rate and audio data as a NumPy array.
     """
     sample_rate, data = wavfile.read(filepath)
-    # Normalize audio data
     data = data.astype(np.float32) / np.max(np.abs(data))
     return sample_rate, data
 
-def calculate_rt60(data, sample_rate, freq_range):
+def process_frequency_range(data, sample_rate, freq_range, epsilon=1e-10):
     """
-    Calculate the RT60 reverberation time for a given frequency range using the Schroeder method.
+    Enhanced frequency range processing with improved numerical stability.
 
-    Parameters:
-        data (np.ndarray): Audio data (1D array).
-        sample_rate (int): Sampling rate of the audio.
-        freq_range (tuple): Low and high cutoff frequencies (Hz).
+    Args:
+        data (np.ndarray): Input audio data
+        sample_rate (int): Audio sampling rate
+        freq_range (tuple): Low and high cutoff frequencies (Hz)
+        epsilon (float): Small value to prevent log(0)
 
     Returns:
-        float: Estimated RT60 value in seconds.
+        tuple: Times and normalized energy decay in decibels
     """
+    # Nyquist frequency calculation
+    nyquist = 0.5 * sample_rate
+    low = freq_range[0] / nyquist
+    high = freq_range[1] / nyquist
 
-def process_frequency_range(data, sample_rate, freq_range):
+    # Bandpass filter creation
+    b, a = butter(2, [low, high], btype='band')
+    filtered_data = lfilter(b, a, data)
+
+    # Energy calculation
+    energy = filtered_data ** 2
+    energy_db = 10 * np.log10(energy + epsilon)  # Avoid log(0)
+
+    # Create a time axis for the data
+    n_samples = len(data)
+    duration = n_samples / sample_rate
+    time = np.linspace(0, duration, num=n_samples)
+
+    return time, energy_db
+
+def calculate_rt60(data, sample_rate, freq_range, decay_points=None):
     """
-    Filter the data for the given frequency range using a Butterworth bandpass filter.
+    Robust RT60 calculation with multiple decay range options.
 
-    Parameters:
-        data (np.ndarray): Audio data.
-        sample_rate (int): Sampling rate of the audio.
-        freq_range (tuple): Low and high cutoff frequencies (Hz).
+    Args:
+        data (np.ndarray): Audio data
+        sample_rate (int): Audio sampling rate
+        freq_range (tuple): Target frequency range
+        decay_points (tuple, optional): Custom decay start and end points in dB
 
     Returns:
-        np.ndarray: Filtered audio data.
+        float: Estimated RT60 value
     """
+    if decay_points is None:
+        decay_points = (-5, -25)  # Default to -5dB and -25dB
+
+    time, energy_db = process_frequency_range(data, sample_rate, freq_range)
+
+    # Find the peak energy level and corresponding index
+    max_db = np.max(energy_db)
+    max_idx = np.argmax(energy_db)
+
+    # Calculate decay thresholds
+    start_threshold = max_db + decay_points[0]
+    end_threshold = max_db + decay_points[1]
+
+    # Locate time indices for the thresholds
+    start_idx = np.where(energy_db[max_idx:] < start_threshold)[0][0] + max_idx
+    end_idx = np.where(energy_db[max_idx:] < end_threshold)[0][0] + max_idx
+
+    # Convert indices to times
+    t_start = start_idx / sample_rate
+    t_end = end_idx / sample_rate
+
+    # Calculate RT60 from RT20 (standard approximation)
+    rt20 = t_end - t_start
+    rt60 = rt20 * 3
+
+    return rt60
 
 """Data Visualization"""
 def plot_intensity(filepath, output_dir):
